@@ -1,0 +1,6 @@
+opencv-python
+requests
+numpy
+websockets
+google-generativeai
+# presage-tech-sdk (mocked in code as public SDK not available)
