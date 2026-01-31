@@ -1,0 +1,6 @@
+{
+    "api_endpoint": "http://localhost:3000/api/pi-data",
+    "gemini_api_key": "YOUR_GEMINI_API_KEY_HERE",
+    "presage_api_key": "YOUR_PRESAGE_API_KEY_HERE",
+    "device_id": "hat-01"
+}
