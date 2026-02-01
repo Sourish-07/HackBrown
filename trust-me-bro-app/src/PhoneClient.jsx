@@ -125,9 +125,9 @@ export function PhoneClient() {
   const needsAction = (() => {
     if (!gameState) return false;
     const gp = gameState.gamePhase;
-    if (gp === 'wagering' && isGuesser) return true; // place wager
+    if (gp === 'wagering' && isSubject) return true; // place wager
     if (gp === 'statement' && isSubject) return true; // make statement / press ready
-    if (gp === 'guessing' && isSubject) return true; // make the guess (hat-wearer guesses)
+    if (gp === 'guessing' && isGuesser) return true; // make the guess (interrogator/guesser)
     return false;
   })();
 
@@ -197,8 +197,8 @@ export function PhoneClient() {
       )}
 
       <div className="phone-content">
-        {/* Wagering Phase - Suspect Only (choose declared truth/lie too) */}
-        {phase === 'wagering' && isGuesser && (
+        {/* Wagering Phase - Statement Maker Only (choose declared truth/lie too) */}
+        {phase === 'wagering' && isSubject && (
           <div className="wagering-screen">
             <h2>Place Your Wager & Declare</h2>
             <p>You're the Suspect — select whether you'll tell the truth or lie when making your statement.</p>
@@ -256,10 +256,23 @@ export function PhoneClient() {
           </div>
         )}
 
-        {/* Statement phase no longer requires a button; subject will see guessing UI when wager is set */}
+        {/* Statement phase: statement maker speaks, then starts guessing */}
+        {phase === 'statement' && isSubject && (
+          <div className="statement-screen">
+            <h2>Make Your Statement</h2>
+            <p>Say your statement out loud, then tap when ready for the interrogator to guess.</p>
+            <button
+              className="btn-primary"
+              onClick={handleStartGuess}
+              disabled={loading}
+            >
+              Start Guessing
+            </button>
+          </div>
+        )}
 
-        {/* Guessing Phase - now shown to the Interrogator (hat wearer) */}
-        {phase === 'guessing' && isSubject && (
+        {/* Guessing Phase - shown to the Interrogator (guesser) */}
+        {phase === 'guessing' && isGuesser && (
           <div className="guessing-screen">
             <h2>Interrogator: Make Your Guess</h2>
             <p>Wager: ${gameState.currentWager}</p>
@@ -312,9 +325,9 @@ export function PhoneClient() {
         )}
 
         {/* Idle when not the active role */}
-        {phase === 'wagering' && !isGuesser && (
+        {phase === 'wagering' && !isSubject && (
           <div className="idle-screen">
-            <h2>Waiting for Suspect to Place Wager</h2>
+            <h2>Waiting for Statement Maker to Place Wager</h2>
             {!needsAction && <div className="robot-idle">🤖</div>}
           </div>
         )}

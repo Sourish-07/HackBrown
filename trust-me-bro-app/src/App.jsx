@@ -119,6 +119,7 @@ function App() {
   const metrics = gameState.lastAiData?.metrics || {};
 
   const subjectPlayer = gameState.subjectPlayer || 1;
+  const guesserPlayer = gameState.guesserPlayer || 2;
 
   return (
     <div className="App game-view">
@@ -129,7 +130,7 @@ function App() {
         <h1>TRUST ME BRO</h1>
         <p>a lying game</p>
         <div className="game-info">
-          Round {gameState.round} | Player {subjectPlayer} Interrogator
+          Round {gameState.round} | Interrogator: Player {guesserPlayer} | Statement Maker: Player {subjectPlayer}
         </div>
       </header>
 

@@ -7,13 +7,16 @@ import pyaudio
 import wave
 import base64
 import io
+import os
 from threading import Thread
 from queue import Queue
 
 
 # ---------- Config ----------
+CAMERA_INDEX = 0
 
-with open("config.json") as f:
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+with open(CONFIG_PATH) as f:
     config = json.load(f)
 
 BACKEND_URL = config["api_endpoint"]
@@ -190,6 +193,8 @@ def build_callout_text(callout):
     """Craft the spoken text for a hat callout."""
     if not callout:
         return ""
+    if callout.get("event") and callout.get("event") != "guess":
+        return ""
 
     guess = (callout.get("guess") or "").lower()
     player = callout.get("player") or callout.get("guesser") or "the guesser"
@@ -293,7 +298,6 @@ def speak_text_elevenlabs(text):
             "use_speaker_boost": True,
         },
     }
-
     try:
         response = requests.post(
             url,
@@ -523,6 +527,16 @@ Return a JSON object with:
 
 def main():
     print("Starting AI Inference Hat (Gemini 3 Flash, 20s audio)...")
+    if ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID and not HAT_AUDIO_CALLOUTS_ENABLED:
+        print(
+            "ElevenLabs is configured but hat audio callouts are disabled. "
+            "Set hat_audio_callouts_enabled to true in config.json to enable speech."
+        )
+    if HAT_AUDIO_CALLOUTS_ENABLED and not HAT_CALLOUT_ENDPOINT:
+        print(
+            "Hat audio callouts enabled, but no hat callout endpoint is configured. "
+            "Set hat_callout_endpoint or backend_base_url in config.json."
+        )
 
     audio_thread = Thread(target=audio_capture_thread, daemon=True)
     audio_thread.start()

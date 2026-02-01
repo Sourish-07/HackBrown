@@ -97,12 +97,12 @@ class GameLogic {
         // payload can be a number or an object { amount, declared }
         let amount = typeof payload === 'number' ? payload : payload?.amount;
         const declared = typeof payload === 'object' ? payload.declared : undefined;
-        const maxBalance = this.guesserPlayer === 1 ? this.scores.player_1_balance : this.scores.player_2_balance;
+        const maxBalance = this.subjectPlayer === 1 ? this.scores.player_1_balance : this.scores.player_2_balance;
         if (amount > 0 && amount <= maxBalance) {
             this.currentWager = amount;
             if (declared) this.lastDeclared = declared; // 'truth' or 'lie'
-            // Once wager and declared choice are set, move directly to guessing so the subject can make a guess
-            this.gamePhase = 'guessing';
+            // Once wager and declared choice are set, move to statement so the subject can speak
+            this.gamePhase = 'statement';
             return { success: true, wager: this.currentWager, declared: this.lastDeclared };
         }
         return { success: false, error: 'Invalid wager' };

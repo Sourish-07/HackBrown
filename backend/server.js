@@ -179,6 +179,7 @@ wss.on('connection', (ws) => {
                 const guess = parsed.payload;
                 const stateSnapshot = gameLogic.getState();
                 queueHatCallout({
+                    event: 'guess',
                     guess,
                     player: gameLogic.guesserPlayer,
                     subject: gameLogic.subjectPlayer,
@@ -263,7 +264,7 @@ wss.on('connection', (ws) => {
 });
 
 function queueHatCallout(callout) {
-    if (!callout || !callout.guess) {
+    if (!callout || !callout.guess || callout.event !== 'guess') {
         return;
     }
     hatCalloutQueue.push(callout);
