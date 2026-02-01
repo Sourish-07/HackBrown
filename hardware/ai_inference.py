@@ -16,7 +16,7 @@ GEMINI_KEY = config.get('gemini_api_key', '')
 # Setup Gemini
 if GEMINI_KEY and "YOUR_GEMINI" not in GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
-    model = genai.GenerativeModel('gemini-1.5-pro-latest')
+    model = genai.GenerativeModel('gemini-3-pro-preview')
 else:
     model = None
     print("Warning: Gemini API Key missing or default.")
@@ -52,98 +52,148 @@ def analyze_audio_gemini(text_transcript):
     """
     Uses Gemini API to analyze text for deception indicators.
     """
+    # Local fallback analyzer (simple heuristics for tone/deception)
+    def local_tone_and_deception(txt: str):
+        t = (txt or '').strip()
+        lowered = t.lower()
+        hesitation_count = lowered.count('um') + lowered.count('uh') + lowered.count('hmm')
+        question_marks = t.count('?')
+        exclamations = t.count('!')
+        length = len(t.split())
+
+        # Tone heuristics
+        if hesitation_count >= 2 or question_marks > 1:
+            tone = 'hesitant'
+        elif exclamations > 0:
+            tone = 'agitated'
+        elif length < 4:
+            tone = 'curt'
+        else:
+            tone = 'calm'
+
+        # Deception heuristics: hedging, over-assertion, hesitations
+        score = 0.5
+        if hesitation_count >= 2:
+            score += 0.18
+        if any(w in lowered for w in ['honestly', "to be honest", 'really', "i swear"]):
+            score += 0.08
+        if any(w in lowered for w in ['did not', "didn't", 'no', 'never']) and question_marks > 0:
+            score += 0.12
+        if exclamations > 0:
+            score += 0.06
+        if length < 4:
+            score += 0.05
+
+        score = max(0.0, min(1.0, score))
+        reasoning = f"Local heuristic: tone={tone}; hesitations={hesitation_count}; qmarks={question_marks}; exclaims={exclamations}"
+        return {"deception_score": round(score, 2), "reasoning": reasoning, "tone_summary": f"sounds {tone}"}
+
     if not model:
-        return {"deception_score": 0.5, "reasoning": "Gemini not configured"}
+        return {"deception_score": 0.5, "reasoning": "Gemini not configured, using local fallback", "tone_summary": local_tone_and_deception(text_transcript)['tone_summary']}
+
     prompt = f"""
-    Analyze the following statement for signs of deception, hesitation, or contradiction.
-    Statement: "{text_transcript}"
+Analyze the following statement for signs of deception, hesitation, or contradiction.
+Statement: "{text_transcript}"
 
-    Return a JSON object with:
-    - deception_score (0.0 to 1.0, where 1.0 is high likelihood of lie)
-    - reasoning (short explanation)
-    """
+Return a short JSON object with keys:
+- deception_score (0.0 to 1.0)
+- reasoning (short explanation)
+- tone_summary (short phrase like 'sounds nervous' or 'calm')
+Example:
+{"deception_score": 0.72, "reasoning": "stammering and hedging detected", "tone_summary": "sounds hesitant"}
+"""
 
-    # Try a few common client call patterns and extract text robustly
+    # Build a list of call patterns to try; some genai SDKs differ by version
     attempts = []
     try:
-        # Some versions expose a top-level helper
-        attempts.append(lambda: genai.generate_text(model="gemini-1.5-pro", prompt=prompt))
+        if hasattr(genai, 'generate_text'):
+            attempts.append(lambda: genai.generate_text(model="gemini-1.5-pro", prompt=prompt))
     except Exception:
         pass
     try:
-        # Chat-style API
-        attempts.append(lambda: genai.chat.completions.create(model="gemini-1.5-pro", messages=[{"role": "user", "content": prompt}]))
+        if hasattr(genai, 'chat') and hasattr(genai.chat, 'completions'):
+            attempts.append(lambda: genai.chat.completions.create(model="gemini-1.5-pro", messages=[{"role": "user", "content": prompt}]))
     except Exception:
         pass
     try:
-        # If caller created a model object (older patterns)
-        attempts.append(lambda: model.generate(prompt))
+        if model and hasattr(model, 'generate'):
+            attempts.append(lambda: model.generate(prompt=prompt))
     except Exception:
         pass
     try:
-        attempts.append(lambda: model.generate_content(prompt))
+        if model and hasattr(model, 'generate_content'):
+            attempts.append(lambda: model.generate_content(prompt=prompt))
     except Exception:
         pass
 
     for attempt in attempts:
         try:
             resp = attempt()
-            # Try several common response shapes
-            text = None
             if resp is None:
                 continue
-            # handle genai.generate_text -> resp.text or resp.output
+
+            # Try to extract text from multiple known shapes
+            text = None
+            # genai.generate_text -> object with 'text' or 'output'
             if hasattr(resp, 'text'):
                 text = resp.text
             elif isinstance(resp, dict) and 'output' in resp:
-                # service SDK sometimes returns dict with 'output'
                 out = resp.get('output')
                 if isinstance(out, list) and len(out) > 0:
-                    text = out[0].get('content') if isinstance(out[0], dict) else str(out[0])
+                    first = out[0]
+                    if isinstance(first, dict):
+                        text = first.get('content') or first.get('text') or str(first)
+                    else:
+                        text = str(first)
             elif isinstance(resp, dict) and 'candidates' in resp:
                 c = resp.get('candidates')
                 if isinstance(c, list) and len(c) > 0:
                     text = c[0].get('content') or c[0].get('message') or str(c[0])
             else:
-                # fallback to str()
                 text = str(resp)
 
             if not text:
                 continue
 
-            # Attempt to extract JSON object from text
-            text = text.strip()
-            # If text contains a JSON blob, try to parse it
+            # Try parse JSON
             try:
-                # direct JSON
                 parsed = json.loads(text)
                 if 'deception_score' in parsed:
-                    return {"deception_score": float(parsed['deception_score']), "reasoning": parsed.get('reasoning', '')}
+                    # Ensure tone_summary present
+                    if 'tone_summary' not in parsed:
+                        parsed['tone_summary'] = local_tone_and_deception(text_transcript)['tone_summary']
+                    return {"deception_score": float(parsed['deception_score']), "reasoning": parsed.get('reasoning', ''), "tone_summary": parsed.get('tone_summary')}
             except Exception:
-                # Try to find a JSON substring
+                # try to extract JSON substring
                 import re
                 m = re.search(r"(\{[\s\S]*\})", text)
                 if m:
                     try:
                         parsed = json.loads(m.group(1))
                         if 'deception_score' in parsed:
-                            return {"deception_score": float(parsed['deception_score']), "reasoning": parsed.get('reasoning', '')}
+                            if 'tone_summary' not in parsed:
+                                parsed['tone_summary'] = local_tone_and_deception(text_transcript)['tone_summary']
+                            return {"deception_score": float(parsed['deception_score']), "reasoning": parsed.get('reasoning', ''), "tone_summary": parsed.get('tone_summary')}
                     except Exception:
                         pass
 
-            # If we couldn't parse JSON, do a small heuristic: look for percentage or 'likely lie'
             lowered = text.lower()
+            # heuristics on returned text
             if 'lie' in lowered or 'decept' in lowered:
-                # conservative score
-                return {"deception_score": 0.75, "reasoning": (lowered[:200])}
-            # fallback to neutral
-            return {"deception_score": 0.5, "reasoning": text[:200]}
-        except Exception as e:
-            print(f"Gemini attempt failed: {e}")
+                return {"deception_score": 0.75, "reasoning": text[:300], "tone_summary": local_tone_and_deception(text_transcript)['tone_summary']}
 
-    # If we reached here, all attempts failed
+            # fallback: return neutral with text as reasoning
+            return {"deception_score": 0.5, "reasoning": text[:300], "tone_summary": local_tone_and_deception(text_transcript)['tone_summary']}
+        except Exception as e:
+            # Detect quota/message hints
+            err = str(e)
+            print(f"Gemini attempt failed: {err}")
+            if 'quota' in err.lower() or '429' in err:
+                return {"deception_score": 0.5, "reasoning": "Gemini quota exceeded - using fallback", "tone_summary": local_tone_and_deception(text_transcript)['tone_summary']}
+
+    # If we reached here, all attempts failed — return local heuristic
     print("Gemini: all client attempts failed or returned no usable text")
-    return {"deception_score": 0.5, "reasoning": "Gemini unavailable or unsupported client - using fallback"}
+    return local_tone_and_deception(text_transcript)
 
 def main():
     print("Starting AI Inference Hat (Advanced Mode)...")
@@ -180,8 +230,8 @@ def main():
                            (fear_score * W_fear) + \
                            (linguistic_score * W_gemini)
             
-            # Normalize to 0-100
-            lie_prob = min(max(raw_lie_prob * 100, 0), 100)
+            # Normalize to 1-100 (ensure non-zero visible risk)
+            lie_prob = min(max(raw_lie_prob * 100, 1), 100)
             
             payload = {
                 "lie_probability": round(lie_prob, 1),
