@@ -44,7 +44,6 @@ function App() {
     return (
       <div className="App connecting">
         <h1>Lie Detecting Hat</h1>
-        <p>Connecting to backend...</p>
       </div>
     );
   }
@@ -63,8 +62,8 @@ function App() {
   return (
     <div className="App">
       <header>
-        <h1>🎩 Lie Detecting Hat - Financial Risk Analysis</h1>
-        <p>Advanced Biometric & AI-Driven Credit Risk Assessment</p>
+        <h1>TRUST ME BRO</h1>
+        <p>a lying game</p>
       </header>
 
       <div className="game-container">
@@ -120,14 +119,14 @@ function App() {
               onClick={() => handleBet('truth')}
               disabled={loading}
             >
-              ✓ APPROVE (Truth)
+              ✓ TRUTH
             </button>
             <button 
               className="btn deny"
               onClick={() => handleBet('lie')}
               disabled={loading}
             >
-              ✗ DENY (Fraud)
+              ✗ LIE
             </button>
           </div>
 
@@ -136,7 +135,7 @@ function App() {
             <div className={`bet-result ${betResult.winner}`}>
               <h3>{betResult.message}</h3>
               {betResult.actual_outcome && (
-                <p>Actual Outcome: <strong>{betResult.actual_outcome.toUpperCase()}</strong></p>
+                <p>AI PREDICTION: <strong>{betResult.actual_outcome.toUpperCase()}</strong></p>
               )}
               {betResult.new_scores && (
                 <p>Your Balance: ${betResult.new_scores.hat_player_balance} | Bank: ${betResult.new_scores.opponent_balance}</p>
