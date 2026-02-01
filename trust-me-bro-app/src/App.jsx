@@ -12,6 +12,7 @@ function App() {
   const [gameStarted, setGameStarted] = useState(false);
   const [gamePin, setGamePin] = useState('');
   const [displayedGuess, setDisplayedGuess] = useState(null);
+  const [displayedSelection, setDisplayedSelection] = useState(null);
   const [showGuessAnim, setShowGuessAnim] = useState(false);
   const [countdownRemaining, setCountdownRemaining] = useState(null);
 
