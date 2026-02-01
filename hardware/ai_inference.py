@@ -17,8 +17,9 @@ with open("config.json") as f:
     config = json.load(f)
 
 BACKEND_URL = config["api_endpoint"]
-GEMINI_API_KEY = config.get("gemini_api_key", "")
-CAMERA_INDEX = config.get("camera_index", 0)
+OPENROUTER_KEY = config.get("openrouter_api_key", "")
+APP_ORIGIN = config.get("app_origin", "http://localhost")
+APP_TITLE = config.get("app_title", "Inference Hat")
 
 # ElevenLabs configuration
 ELEVENLABS_API_KEY = config.get("elevenlabs_api_key", "")
@@ -369,7 +370,10 @@ def audio_capture_thread():
         p.terminate()
 
 
-# ---------- Gemini integration ----------
+"""OpenRouter-based Gemini 3 Flash audio analysis for the Inference Hat."""
+
+
+# ---------- OpenRouter / Gemini integration ----------
 
 def analyze_audio_gemini(audio_frames, transcript_hint=""):
     """
@@ -379,7 +383,7 @@ def analyze_audio_gemini(audio_frames, transcript_hint=""):
     if not GEMINI_API_KEY:
         return {
             "deception_score": 0.5,
-            "reasoning": "Gemini API key not configured",
+            "reasoning": "OpenRouter API key not configured",
             "transcript": "",
         }
 
@@ -414,48 +418,40 @@ Return a JSON object with:
             "Cross-check the audio against this text and refine the deception score."
         )
 
-    body = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {"text": prompt},
-                    {
-                        "inlineData": {
-                            "mimeType": "audio/wav",
-                            "data": base64_audio,
-                        }
-                    },
-                ],
-            }
-        ]
-    }
-
     try:
         response = requests.post(
-            f"{GEMINI_API_URL}/models/{GEMINI_MODEL}:generateContent",
-            params={"key": GEMINI_API_KEY},
-            headers={"Content-Type": "application/json"},
-            json=body,
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": APP_ORIGIN,
+                "X-Title": APP_TITLE,
+            },
+            json={
+                "model": OPENROUTER_MODEL,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "input_audio",
+                                "input_audio": {
+                                    "mime_type": "audio/wav",
+                                    "audio": base64_audio,
+                                },
+                            },
+                        ],
+                    }
+                ],
+                "response_format": {"type": "json_object"},
+            },
             timeout=60,
         )
 
         if response.status_code == 200:
             data = response.json()
-
-            # Extract text from candidates -> content -> parts
-            text_parts = []
-            try:
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    for part in parts:
-                        if "text" in part:
-                            text_parts.append(part["text"])
-            except Exception:
-                pass
-
-            text = "\n".join(text_parts).strip()
+            text = data["choices"][0]["message"]["content"].strip()
 
             # Try to parse as JSON directly
             try:
@@ -507,7 +503,7 @@ Return a JSON object with:
                 "transcript": transcript,
             }
 
-        print(f"Gemini API error: {response.status_code} - {response.text}")
+        print(f"OpenRouter API error: {response.status_code} - {response.text}")
         return {
             "deception_score": 0.5,
             "reasoning": f"API error: {response.status_code}",
@@ -515,7 +511,7 @@ Return a JSON object with:
         }
 
     except Exception as e:
-        print(f"Gemini API request failed: {e}")
+        print(f"OpenRouter request failed: {e}")
         return {
             "deception_score": 0.5,
             "reasoning": f"Request failed: {str(e)}",
