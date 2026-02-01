@@ -83,14 +83,19 @@ The project targets hackathon tracks like Capital One's Best Financial Hack (ris
    - Place bets via the UI (truth or lie) to simulate financial decisions.
    - Backend logs show Gemini reasoning and risk updates.
    - Use the `/api/reset` endpoint to reset the game.
+5. **Optional: Enable Hat Audio Callouts**
+   - In `hardware/config.json`, set `hat_audio_callouts_enabled` to `true` and supply `elevenlabs_api_key`, `elevenlabs_voice_id`, and (optionally) `backend_base_url` if your API host differs from `http://localhost:3000`.
+   - The Raspberry Pi polls `/api/hat-callout`, grabs the queued message for each guess, and plays a randomized ElevenLabs TTS insult that either validates a truth or inverts a suspected lie.
 
 ## How It Works
 
 ### Hardware (ai_inference.py)
 - Captures video frames from camera (OpenCV).
 - Analyzes physiology using mocked Presage functions: extracts heart rate, breathing, stress, and facial emotions (randomized for demo; real SDK would use video-based rPPG).
+- Streams audio chunks to ElevenLabs Speech-to-Text for transcripts, then feeds that context into Google Gemini for deception scoring.
 - Analyzes transcribed statements with Google Gemini: prompts for deception score and reasoning.
 - Fuses data with weights (stress 30%, fear 20%, linguistic 50%) to compute lie probability (0-100).
+- Optionally polls the backend for player guesses and uses ElevenLabs Text-to-Speech to blast randomized callouts/insults through the hat speakers.
 - Sends JSON payload to backend: `{lie_probability, timestamp, metrics: {presage, gemini}}`.
 
 ### Backend
@@ -114,8 +119,8 @@ See [TESTING.md](TESTING.md) for detailed validation steps, including API curls 
 
 ## Limitations & Future Work
 - Presage and Gemini are partially mocked for demo (real keys enable full functionality).
-- No actual audio transcription (assumes pre-transcribed text).
-- Enhance with real sensors (e.g., microphone for STT).
+- ElevenLabs STT currently processes 20s batches; explore realtime streaming for faster feedback.
+- Enhance with real sensors (e.g., rPPG plus additional biosignals).
 - Add more financial metrics (e.g., dynamic payouts based on risk confidence).
 
 ## Contributors
