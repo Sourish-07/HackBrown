@@ -21,17 +21,13 @@ export function PhoneClient() {
       console.log('[Phone] Received:', data);
       if (data.type === 'INIT') {
         setGameState(data.data);
-        setLoading(false);
       } else if (data.type === 'PLAYER_ASSIGNED') {
         setAssignedPlayerId(data.playerId);
-        setLoading(false);
       } else if (data.type === 'PIN_ERROR') {
         setPinError(data.message);
-        setLoading(false);
       } else if (data.type === 'GAME_START') {
         setGameState(data.data);
         setPhase('wagering');
-        setLoading(false);
       } else if (data.type === 'PHASE_UPDATE') {
         setGameState(data.data);
         if (data.data.gamePhase === 'statement') {
@@ -42,7 +38,6 @@ export function PhoneClient() {
         } else if (data.data.gamePhase === 'results') {
           setPhase('results');
         }
-        setLoading(false);
       } else if (data.type === 'COUNTDOWN') {
         setCountdownRemaining(data.data.seconds);
         setCountdownActive(true);
@@ -52,7 +47,6 @@ export function PhoneClient() {
       } else if (data.type === 'RESULT') {
         setGameState(data.data);
         setPhase('results');
-        setLoading(false);
       } else if (data.type === 'NEXT_ROUND') {
         setGameState(data.data);
         setPhase('wagering');
@@ -61,7 +55,6 @@ export function PhoneClient() {
         setDeclaredChoice(null);
         setCountdownActive(false);
         setCountdownRemaining(null);
-        setLoading(false);
       }
     });
     socket.connect();
