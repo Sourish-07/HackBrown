@@ -71,12 +71,13 @@ TRUTH_INSULTS = [
 last_callout_play_ts = 0
 
 # Use a valid Gemini 3 Flash model string for the Gemini API
-GEMINI_MODEL = config.get("gemini_model", "gemini-3-flash-preview")
-# If user accidentally puts an OpenRouter-style "google/..." string, strip prefix
-if GEMINI_MODEL.startswith("google/"):
-    GEMINI_MODEL = GEMINI_MODEL.split("/", 1)[1]
-
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta"
+# GEMINI MODEL/API CONFIG DISABLED (GEMINI INTEGRATION COMMENTED OUT)
+# GEMINI_MODEL = config.get("gemini_model", "gemini-3-flash-preview")
+# # If user accidentally puts an OpenRouter-style "google/..." string, strip prefix
+# if GEMINI_MODEL.startswith("google/"):
+#     GEMINI_MODEL = GEMINI_MODEL.split("/", 1)[1]
+#
+# GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 # ---------- Audio configuration ----------
 
@@ -379,148 +380,156 @@ def audio_capture_thread():
 
 # ---------- OpenRouter / Gemini integration ----------
 
+# def analyze_audio_gemini(audio_frames, transcript_hint=""):
+#     """
+#     Send a 20s audio chunk to Gemini 3 Flash via the Gemini API.
+#     Expects the model to return JSON with transcript, deception_score, reasoning.
+#     """
+#     if not GEMINI_API_KEY:
+#         return {
+#             "deception_score": 0.5,
+#             "reasoning": "OpenRouter API key not configured",
+#             "transcript": "",
+#         }
+#
+#     if not audio_frames:
+#         return {
+#             "deception_score": 0.5,
+#             "reasoning": "No audio data",
+#             "transcript": "",
+#         }
+#
+#     base64_audio = audio_to_base64_wav(audio_frames)
+#
+#     prompt = """Analyze this audio clip for signs of deception, hesitation, or contradiction in the speaker's voice and words.
+#
+# Consider:
+# - Vocal hesitation or uncertainty
+# - Speech patterns and pauses
+# - Tone and emotional content
+# - Linguistic markers of deception
+# - Content contradictions
+#
+# First, transcribe what was said, then analyze it.
+#
+# Return a JSON object with:
+# - transcript (what the person said)
+# - deception_score (0.0 to 1.0, where 1.0 is high likelihood of lie)
+# - reasoning (short explanation based on vocal and linguistic cues)"""
+#     if transcript_hint:
+#         prompt += (
+#             f"\n\nTranscript candidate (from ElevenLabs STT) to assist your analysis:\n"
+#             f"{transcript_hint}\n"
+#             "Cross-check the audio against this text and refine the deception score."
+#         )
+#
+#     try:
+#         response = requests.post(
+#             "https://openrouter.ai/api/v1/chat/completions",
+#             headers={
+#                 "Authorization": f"Bearer {OPENROUTER_KEY}",
+#                 "Content-Type": "application/json",
+#                 "HTTP-Referer": APP_ORIGIN,
+#                 "X-Title": APP_TITLE,
+#             },
+#             json={
+#                 "model": OPENROUTER_MODEL,
+#                 "messages": [
+#                     {
+#                         "role": "user",
+#                         "content": [
+#                             {"type": "text", "text": prompt},
+#                             {
+#                                 "type": "input_audio",
+#                                 "input_audio": {
+#                                     "mime_type": "audio/wav",
+#                                     "audio": base64_audio,
+#                                 },
+#                             },
+#                         ],
+#                     }
+#                 ],
+#                 "response_format": {"type": "json_object"},
+#             },
+#             timeout=60,
+#         )
+#
+#         if response.status_code == 200:
+#             data = response.json()
+#             text = data["choices"][0]["message"]["content"].strip()
+#
+#             # Try to parse as JSON directly
+#             try:
+#                 parsed = json.loads(text)
+#                 if "deception_score" in parsed:
+#                     return {
+#                         "deception_score": float(parsed["deception_score"]),
+#                         "reasoning": parsed.get("reasoning", ""),
+#                         "transcript": parsed.get("transcript") or transcript_hint,
+#                     }
+#             except Exception:
+#                 # Try to pull JSON object out of a longer string
+#                 import re
+#
+#                 match = re.search(r"(\{[\s\S]*\})", text)
+#                 if match:
+#                     try:
+#                         parsed = json.loads(match.group(1))
+#                         if "deception_score" in parsed:
+#                             return {
+#                                 "deception_score": float(parsed["deception_score"]),
+#                                 "reasoning": parsed.get("reasoning", ""),
+#                                 "transcript": parsed.get("transcript") or transcript_hint,
+#                             }
+#                     except Exception:
+#                         pass
+#
+#             # Fallbacks if the model didn't return clean JSON
+#             transcript = ""
+#             if "transcript" in text.lower():
+#                 for line in text.split("\n"):
+#                     if "transcript" in line.lower() and ":" in line:
+#                         transcript = line.split(":", 1)[1].strip().strip("'\"")
+#                         break
+#
+#             if not transcript and transcript_hint:
+#                 transcript = transcript_hint
+#             lowered = text.lower()
+#             if any(k in lowered for k in ("lie", "decept", "hesitat")):
+#                 return {
+#                     "deception_score": 0.75,
+#                     "reasoning": text[:200],
+#                     "transcript": transcript,
+#                 }
+#
+#             return {
+#                 "deception_score": 0.5,
+#                 "reasoning": text[:200],
+#                 "transcript": transcript,
+#             }
+#
+#         print(f"OpenRouter API error: {response.status_code} - {response.text}")
+#         return {
+#             "deception_score": 0.5,
+#             "reasoning": f"API error: {response.status_code}",
+#             "transcript": "",
+#         }
+#
+#     except Exception as e:
+#         print(f"OpenRouter request failed: {e}")
+#         return {
+#             "deception_score": 0.5,
+#             "reasoning": f"Request failed: {str(e)}",
+#             "transcript": "",
+#         }
+
 def analyze_audio_gemini(audio_frames, transcript_hint=""):
-    """
-    Send a 20s audio chunk to Gemini 3 Flash via the Gemini API.
-    Expects the model to return JSON with transcript, deception_score, reasoning.
-    """
-    if not GEMINI_API_KEY:
-        return {
-            "deception_score": 0.5,
-            "reasoning": "OpenRouter API key not configured",
-            "transcript": "",
-        }
-
-    if not audio_frames:
-        return {
-            "deception_score": 0.5,
-            "reasoning": "No audio data",
-            "transcript": "",
-        }
-
-    base64_audio = audio_to_base64_wav(audio_frames)
-
-    prompt = """Analyze this audio clip for signs of deception, hesitation, or contradiction in the speaker's voice and words.
-
-Consider:
-- Vocal hesitation or uncertainty
-- Speech patterns and pauses
-- Tone and emotional content
-- Linguistic markers of deception
-- Content contradictions
-
-First, transcribe what was said, then analyze it.
-
-Return a JSON object with:
-- transcript (what the person said)
-- deception_score (0.0 to 1.0, where 1.0 is high likelihood of lie)
-- reasoning (short explanation based on vocal and linguistic cues)"""
-    if transcript_hint:
-        prompt += (
-            f"\n\nTranscript candidate (from ElevenLabs STT) to assist your analysis:\n"
-            f"{transcript_hint}\n"
-            "Cross-check the audio against this text and refine the deception score."
-        )
-
-    try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": APP_ORIGIN,
-                "X-Title": APP_TITLE,
-            },
-            json={
-                "model": OPENROUTER_MODEL,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "input_audio",
-                                "input_audio": {
-                                    "mime_type": "audio/wav",
-                                    "audio": base64_audio,
-                                },
-                            },
-                        ],
-                    }
-                ],
-                "response_format": {"type": "json_object"},
-            },
-            timeout=60,
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            text = data["choices"][0]["message"]["content"].strip()
-
-            # Try to parse as JSON directly
-            try:
-                parsed = json.loads(text)
-                if "deception_score" in parsed:
-                    return {
-                        "deception_score": float(parsed["deception_score"]),
-                        "reasoning": parsed.get("reasoning", ""),
-                        "transcript": parsed.get("transcript") or transcript_hint,
-                    }
-            except Exception:
-                # Try to pull JSON object out of a longer string
-                import re
-
-                match = re.search(r"(\{[\s\S]*\})", text)
-                if match:
-                    try:
-                        parsed = json.loads(match.group(1))
-                        if "deception_score" in parsed:
-                            return {
-                                "deception_score": float(parsed["deception_score"]),
-                                "reasoning": parsed.get("reasoning", ""),
-                                "transcript": parsed.get("transcript") or transcript_hint,
-                            }
-                    except Exception:
-                        pass
-
-            # Fallbacks if the model didn't return clean JSON
-            transcript = ""
-            if "transcript" in text.lower():
-                for line in text.split("\n"):
-                    if "transcript" in line.lower() and ":" in line:
-                        transcript = line.split(":", 1)[1].strip().strip("'\"")
-                        break
-
-            if not transcript and transcript_hint:
-                transcript = transcript_hint
-            lowered = text.lower()
-            if any(k in lowered for k in ("lie", "decept", "hesitat")):
-                return {
-                    "deception_score": 0.75,
-                    "reasoning": text[:200],
-                    "transcript": transcript,
-                }
-
-            return {
-                "deception_score": 0.5,
-                "reasoning": text[:200],
-                "transcript": transcript,
-            }
-
-        print(f"OpenRouter API error: {response.status_code} - {response.text}")
-        return {
-            "deception_score": 0.5,
-            "reasoning": f"API error: {response.status_code}",
-            "transcript": "",
-        }
-
-    except Exception as e:
-        print(f"OpenRouter request failed: {e}")
-        return {
-            "deception_score": 0.5,
-            "reasoning": f"Request failed: {str(e)}",
-            "transcript": "",
-        }
+    """Gemini analysis disabled; return a neutral placeholder."""
+    return {
+        "deception_score": 0.5,
+        "reasoning": "Gemini analysis disabled",
+        "transcript": transcript_hint or "",
+    }
 
 
 # ---------- Main loop ----------
