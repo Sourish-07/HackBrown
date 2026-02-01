@@ -20,6 +20,11 @@ const clientMap = {
     player_2: null        // Player 2 phone
 };
 
+// Countdown state for inter-round delay
+let countdownInterval = null;
+let countdownRemaining = 0;
+let countdownActive = false;
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
@@ -108,12 +113,16 @@ wss.on('connection', (ws) => {
                     type: 'PLAYERS_UPDATE',
                     data: gameLogic.getState()
                 });
-                // If both players connected, notify them
+                // If both players connected, start the round and notify them
                 if (gameLogic.bothPlayersConnected()) {
-                    broadcastToAll({
-                        type: 'GAME_START',
-                        data: gameLogic.getState()
-                    });
+                    // Assign roles according to join order: first joiner = subject (hat), second = guesser
+                    if (typeof gameLogic.assignRolesFromJoinOrder === 'function') {
+                        gameLogic.assignRolesFromJoinOrder();
+                    } else {
+                        // fallback: keep previous defaults
+                        gameLogic.gamePhase = 'wagering';
+                    }
+                    broadcastToAll({ type: 'GAME_START', data: gameLogic.getState() });
                 }
             }
             
@@ -123,9 +132,10 @@ wss.on('connection', (ws) => {
                 const result = gameLogic.setWager(payload);
                 if (result.success) {
                     // Notify main and players of wager and phase change
+                    // Do NOT broadcast the declarer's declared choice to main/clients
                     broadcastMain({
                         type: 'WAGER_SET',
-                        data: { wager: result.wager, declared: result.declared, guesser: gameLogic.guesserPlayer }
+                        data: { wager: result.wager, guesser: gameLogic.guesserPlayer }
                     });
                     broadcastToAll({
                         type: 'PHASE_UPDATE',
@@ -136,17 +146,7 @@ wss.on('connection', (ws) => {
                 }
             }
 
-            // Subject player signals ready
-            if (parsed.type === 'READY_STATEMENT') {
-                broadcastMain({
-                    type: 'STATEMENT_PHASE',
-                    data: gameLogic.getState()
-                });
-                broadcastToAll({
-                    type: 'PHASE_UPDATE',
-                    data: gameLogic.getState()
-                });
-            }
+            // READY_STATEMENT is no longer used in this flow; subject does not press ready.
 
             // Start guessing phase
             if (parsed.type === 'START_GUESS') {
@@ -164,16 +164,55 @@ wss.on('connection', (ws) => {
             // Guesser makes guess
             if (parsed.type === 'MAKE_GUESS') {
                 const guess = parsed.payload;
+                // Broadcast the guess immediately so main can show it
+                broadcastToAll({ type: 'GUESS_MADE', data: { guess, guesser: gameLogic.guesserPlayer } });
+
+                // Compute result
                 const result = gameLogic.makeGuess(guess);
-                
-                broadcastMain({
-                    type: 'RESULT_PHASE',
-                    data: result
-                });
-                broadcastToAll({
-                    type: 'RESULT',
-                    data: result
-                });
+
+                // Pause 2s to allow main to show the guess animation, then broadcast result
+                setTimeout(() => {
+                    broadcastMain({ type: 'RESULT_PHASE', data: result });
+                    broadcastToAll({ type: 'RESULT', data: result });
+
+                    // Start 10s inter-round countdown (broadcast each second).
+                    // Clear any existing countdown
+                    if (countdownInterval) {
+                        clearInterval(countdownInterval);
+                        countdownInterval = null;
+                    }
+                    countdownRemaining = 10;
+                    countdownActive = true;
+                    // broadcast initial countdown state
+                    broadcastToAll({ type: 'COUNTDOWN', data: { seconds: countdownRemaining } });
+                    countdownInterval = setInterval(() => {
+                        countdownRemaining -= 1;
+                        if (countdownRemaining <= 0) {
+                            clearInterval(countdownInterval);
+                            countdownInterval = null;
+                            countdownActive = false;
+                            // Advance to next round
+                            gameLogic.nextRound();
+                            broadcastToAll({ type: 'NEXT_ROUND', data: gameLogic.getState() });
+                        } else {
+                            broadcastToAll({ type: 'COUNTDOWN', data: { seconds: countdownRemaining } });
+                        }
+                    }, 1000);
+                }, 2000);
+            }
+
+            // Skip countdown request from any client
+            if (parsed.type === 'SKIP_COUNTDOWN') {
+                if (countdownActive) {
+                    if (countdownInterval) {
+                        clearInterval(countdownInterval);
+                        countdownInterval = null;
+                    }
+                    countdownActive = false;
+                    // Immediately advance to next round
+                    gameLogic.nextRound();
+                    broadcastToAll({ type: 'NEXT_ROUND', data: gameLogic.getState() });
+                }
             }
 
             // Next round

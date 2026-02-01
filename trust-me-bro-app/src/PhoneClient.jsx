@@ -7,11 +7,14 @@ export function PhoneClient() {
   const [phase, setPhase] = useState('waiting');
   const [wager, setWager] = useState('');
   const [wagerSubmitted, setWagerSubmitted] = useState(false);
+  const [declaredChoice, setDeclaredChoice] = useState(null);
   const [ws, setWs] = useState(null);
   const [loading, setLoading] = useState(false);
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState('');
   const [assignedPlayerId, setAssignedPlayerId] = useState(null);
+  const [countdownActive, setCountdownActive] = useState(false);
+  const [countdownRemaining, setCountdownRemaining] = useState(null);
 
   useEffect(() => {
     const socket = new GameWebSocket('ws://localhost:3000', (data) => {
@@ -35,6 +38,12 @@ export function PhoneClient() {
         } else if (data.data.gamePhase === 'results') {
           setPhase('results');
         }
+      } else if (data.type === 'COUNTDOWN') {
+        setCountdownRemaining(data.data.seconds);
+        setCountdownActive(true);
+        if (typeof data.data.seconds === 'number' && data.data.seconds <= 0) {
+          setCountdownActive(false);
+        }
       } else if (data.type === 'RESULT') {
         setGameState(data.data);
         setPhase('results');
@@ -43,6 +52,9 @@ export function PhoneClient() {
         setPhase('wagering');
         setWagerSubmitted(false);
         setWager('');
+        setDeclaredChoice(null);
+        setCountdownActive(false);
+        setCountdownRemaining(null);
       }
     });
     socket.connect();
@@ -90,10 +102,32 @@ export function PhoneClient() {
     );
   }
 
+    // If player is assigned but we haven't received the game state yet,
+    // show a small connected/waiting message instead of a blank screen.
+    if (assignedPlayerId && !gameState) {
+      return (
+        <div className="phone-connecting">
+          <h2>Connected as Player {assignedPlayerId}</h2>
+          <p>Waiting for game state...</p>
+          <div className="robot-idle">🤖</div>
+        </div>
+      );
+    }
+
   const pid = assignedPlayerId;
   const isSubject = gameState?.subjectPlayer === pid;
   const isGuesser = gameState?.guesserPlayer === pid;
-  const balance = pid === 1 ? gameState.scores.player_1_balance : gameState.scores.player_2_balance;
+  const balance = pid === 1 ? (gameState?.scores?.player_1_balance ?? 0) : (gameState?.scores?.player_2_balance ?? 0);
+
+  // Determine if this player currently needs to take action
+  const needsAction = (() => {
+    if (!gameState) return false;
+    const gp = gameState.gamePhase;
+    if (gp === 'wagering' && isGuesser) return true; // place wager
+    if (gp === 'statement' && isSubject) return true; // make statement / press ready
+    if (gp === 'guessing' && isSubject) return true; // make the guess (hat-wearer guesses)
+    return false;
+  })();
 
   const handleWagerSubmit = () => {
     if (wager && ws) {
@@ -133,6 +167,12 @@ export function PhoneClient() {
     }
   };
 
+  const handleSkipCountdown = () => {
+    if (ws && ws.ws) {
+      ws.ws.send(JSON.stringify({ type: 'SKIP_COUNTDOWN' }));
+    }
+  };
+
   return (
     <div className="phone-client">
       <header className="phone-header">
@@ -141,12 +181,35 @@ export function PhoneClient() {
         <p className="balance">Balance: ${balance}</p>
       </header>
 
+      {countdownActive && (
+        <div className="countdown-overlay">
+          <p>Next round starts in {countdownRemaining}s</p>
+          <button className="btn-skip" onClick={handleSkipCountdown}>Skip</button>
+        </div>
+      )}
+
       <div className="phone-content">
-        {/* Wagering Phase - Guesser Only */}
+        {/* Wagering Phase - Suspect Only (choose declared truth/lie too) */}
         {phase === 'wagering' && isGuesser && (
           <div className="wagering-screen">
-            <h2>Place Your Wager</h2>
-            <p>You're the Guesser</p>
+            <h2>Place Your Wager & Declare</h2>
+            <p>You're the Suspect — select whether you'll tell the truth or lie when making your statement.</p>
+            <div className="declare-row">
+              <button
+                type="button"
+                className={`btn ${declaredChoice === 'truth' ? 'approve' : ''}`}
+                onClick={() => setDeclaredChoice('truth')}
+              >
+                I will tell the TRUTH
+              </button>
+              <button
+                type="button"
+                className={`btn ${declaredChoice === 'lie' ? 'deny' : ''}`}
+                onClick={() => setDeclaredChoice('lie')}
+              >
+                I will tell a LIE
+              </button>
+            </div>
             <input
               type="number"
               min="1"
@@ -159,42 +222,38 @@ export function PhoneClient() {
             />
             <button
               className="btn-primary"
-              onClick={handleWagerSubmit}
-              disabled={wagerSubmitted || loading || !wager}
+              onClick={() => {
+                if (!declaredChoice) {
+                  setPinError('Please select truth or lie');
+                  return;
+                }
+                if (!wager) {
+                  setPinError('Please enter a wager');
+                  return;
+                }
+                setPinError('');
+                setWagerSubmitted(true);
+                if (ws && ws.ws) {
+                  ws.ws.send(JSON.stringify({
+                    type: 'SET_WAGER',
+                    payload: { amount: parseInt(wager, 10), declared: declaredChoice }
+                  }));
+                }
+              }}
+              disabled={wagerSubmitted || loading}
             >
-              {loading ? 'Setting...' : 'Set Wager'}
+              {loading ? 'Submitting...' : 'Submit Wager & Declare'}
             </button>
             {wagerSubmitted && <p className="success">Wager set: ${wager}</p>}
           </div>
         )}
 
-        {/* Statement Phase - Subject Only */}
-        {phase === 'statement' && isSubject && (
-          <div className="statement-screen">
-            <h2>Make Your Statement</h2>
-            <p>You're wearing the hat</p>
-            <p className="instruction">
-              The other player wagered ${gameState.currentWager}. Make a statement (truth or lie) and press ready.
-            </p>
-            <textarea
-              placeholder="Your statement here..."
-              className="statement-input"
-              disabled={loading}
-            />
-            <button
-              className="btn-primary"
-              onClick={handleReadyStatement}
-              disabled={loading}
-            >
-              {loading ? 'Processing...' : 'Statement Ready'}
-            </button>
-          </div>
-        )}
+        {/* Statement phase no longer requires a button; subject will see guessing UI when wager is set */}
 
-        {/* Guessing Phase - Guesser Only */}
-        {phase === 'guessing' && isGuesser && (
+        {/* Guessing Phase - now shown to the Interrogator (hat wearer) */}
+        {phase === 'guessing' && isSubject && (
           <div className="guessing-screen">
-            <h2>Make Your Guess</h2>
+            <h2>Interrogator: Make Your Guess</h2>
             <p>Wager: ${gameState.currentWager}</p>
             <div className="guess-buttons">
               <button
@@ -239,29 +298,30 @@ export function PhoneClient() {
           <div className="waiting-screen">
             <h2>Waiting for Other Player...</h2>
             <p>Connected players: {gameState.connectedPlayers?.length || 0}/2</p>
-            <div className="robot-idle">🤖</div>
+            {/* Show robot only if there is nothing required of this player */}
+            {!needsAction && <div className="robot-idle">🤖</div>}
           </div>
         )}
 
         {/* Idle when not the active role */}
         {phase === 'wagering' && !isGuesser && (
           <div className="idle-screen">
-            <h2>Waiting for Guesser to Place Wager</h2>
-            <div className="robot-idle">🤖</div>
+            <h2>Waiting for Suspect to Place Wager</h2>
+            {!needsAction && <div className="robot-idle">🤖</div>}
           </div>
         )}
 
         {phase === 'statement' && !isSubject && (
           <div className="idle-screen">
             <h2>Waiting for Subject to Finish Statement</h2>
-            <div className="robot-idle">🤖</div>
+            {!needsAction && <div className="robot-idle">🤖</div>}
           </div>
         )}
 
         {phase === 'guessing' && !isGuesser && (
           <div className="idle-screen">
-            <h2>Waiting for Guesser to Choose</h2>
-            <div className="robot-idle">🤖</div>
+            <h2>Waiting for Interrogator to Choose</h2>
+            {!needsAction && <div className="robot-idle">🤖</div>}
           </div>
         )}
       </div>

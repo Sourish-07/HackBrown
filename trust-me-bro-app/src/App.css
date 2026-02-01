@@ -798,6 +798,22 @@ header p {
   text-align: center;
 }
 
+.guess-banner {
+  margin-top: 0.5rem;
+  font-size: 1.2rem;
+  color: #ffffff;
+  background: rgba(255,255,255,0.06);
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  animation: pop-guess 1s ease;
+}
+
+@keyframes pop-guess {
+  0% { transform: scale(0.9); opacity: 0; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 .wager-display p {
   margin: 0.5rem 0;
   color: #ff0044;

@@ -9,6 +9,9 @@ function App() {
   const [ws, setWs] = useState(null);
   const [gameStarted, setGameStarted] = useState(false);
   const [gamePin, setGamePin] = useState('');
+  const [displayedGuess, setDisplayedGuess] = useState(null);
+  const [showGuessAnim, setShowGuessAnim] = useState(false);
+  const [countdownRemaining, setCountdownRemaining] = useState(null);
 
   useEffect(() => {
     const socket = new GameWebSocket('ws://localhost:3000', (data) => {
@@ -24,12 +27,25 @@ function App() {
       } else if (data.type === 'PLAYERS_UPDATE') {
         setGameState(data.data);
       } else if (data.type === 'WAGER_SET') {
+        // update wager on main; do NOT show declared choice
         setGameState(prev => ({ ...prev, currentWager: data.data.wager }));
+      } else if (data.type === 'GUESS_MADE') {
+        // Show the guess briefly with animation
+        setDisplayedGuess(data.data.guess);
+        setShowGuessAnim(true);
+        setTimeout(() => setShowGuessAnim(false), 1200);
+      } else if (data.type === 'COUNTDOWN') {
+        setCountdownRemaining(data.data.seconds);
       } else if (data.type === 'PHASE_UPDATE' || data.type === 'BIOMETRICS_UPDATE') {
         setGameState(data.data);
       } else if (data.type === 'RESULT' || data.type === 'RESULT_PHASE') {
         setBetResult(data.data);
         setGameState(prev => ({ ...prev, ...data.data }));
+        // clear displayed declared/guess after showing result
+        setTimeout(() => {
+          setDisplayedSelection(null);
+          setDisplayedGuess(null);
+        }, 2000);
       } else if (data.type === 'NEXT_ROUND') {
         setGameState(data.data);
         setBetResult(null);
@@ -103,11 +119,14 @@ function App() {
 
   return (
     <div className="App game-view">
+      {countdownRemaining !== null && (
+        <div className="main-countdown">Next round: {countdownRemaining}s</div>
+      )}
       <header>
         <h1>TRUST ME BRO</h1>
         <p>a lying game</p>
         <div className="game-info">
-          Round {gameState.round} | Player {subjectPlayer} Wearing Hat
+          Round {gameState.round} | Player {subjectPlayer} Interrogator
         </div>
       </header>
 
@@ -159,17 +178,21 @@ function App() {
           </div>
 
           {/* Wager Display */}
-          {gameState.currentWager > 0 && (
-            <div className="wager-display">
-              <p>Current Wager: <strong>${gameState.currentWager}</strong></p>
-              <p className="phase-text">
-                {gameState.gamePhase === 'wagering' && '⏳ Waiting for wager...'}
-                {gameState.gamePhase === 'statement' && '🎤 Subject making statement...'}
-                {gameState.gamePhase === 'guessing' && '🤔 Guesser deciding...'}
-                {gameState.gamePhase === 'results' && '📊 Results...'}
-              </p>
-            </div>
-          )}
+            {gameState.currentWager > 0 && (
+              <div className="wager-display">
+                <p>Current Wager: <strong>${gameState.currentWager}</strong></p>
+                {displayedGuess && showGuessAnim && (
+                  <p className="guess-banner">Guess: <strong>{displayedGuess.toUpperCase()}</strong></p>
+                )}
+                {/* Subject selection is not shown; main shows the guess and then the result */}
+                <p className="phase-text">
+                  {gameState.gamePhase === 'wagering' && '⏳ Waiting for wager...'}
+                  {gameState.gamePhase === 'statement' && '🎤 Subject making statement...'}
+                  {gameState.gamePhase === 'guessing' && '🤔 Interrogator deciding...'}
+                  {gameState.gamePhase === 'results' && '📊 Results...'}
+                </p>
+              </div>
+            )}
 
           {/* Result Display */}
           {betResult && (

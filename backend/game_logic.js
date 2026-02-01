@@ -11,8 +11,9 @@ class GameLogic {
     reset() {
         this.round = 1;
         this.gamePhase = 'waiting'; // waiting, wagering, statement, guessing, results
-        this.subjectPlayer = 1; // who's wearing the hat (1 or 2)
-        this.guesserPlayer = 2; // who's guessing
+        // Roles will be assigned when players join. Start null until both joined.
+        this.subjectPlayer = null; // who's wearing the hat (1 or 2)
+        this.guesserPlayer = null; // who's guessing
         this.scores = {
             player_1_balance: 1000,
             player_2_balance: 1000
@@ -30,6 +31,22 @@ class GameLogic {
         // Financial Risk Metrics
         this.currentRiskScore = 0; // 0-100
         console.log(`[Game] New game PIN: ${this.gamePin}`);
+    }
+
+
+
+    /**
+     * Assign roles based on join order: first joiner = subject (hat), second = guesser
+     */
+    assignRolesFromJoinOrder() {
+        if (this.joinOrder.length >= 2) {
+            const first = this.joinOrder[0];
+            const second = this.joinOrder[1];
+            this.subjectPlayer = first;
+            this.guesserPlayer = second;
+            // Ensure gamePhase starts at wagering once roles set
+            this.gamePhase = 'wagering';
+        }
     }
 
     /**
@@ -84,7 +101,7 @@ class GameLogic {
         if (amount > 0 && amount <= maxBalance) {
             this.currentWager = amount;
             if (declared) this.lastDeclared = declared; // 'truth' or 'lie'
-            // Once wager and declared choice are set, move to guessing phase so the other player can answer
+            // Once wager and declared choice are set, move directly to guessing so the subject can make a guess
             this.gamePhase = 'guessing';
             return { success: true, wager: this.currentWager, declared: this.lastDeclared };
         }
@@ -162,7 +179,8 @@ class GameLogic {
                 outcome: actualOutcome,
                 correct: guessCorrect,
                 risk_score: risk,
-                metrics: this.lastAiData.metrics
+                metrics: this.lastAiData ? this.lastAiData.metrics : null,
+                statement_type: this.lastDeclared || null
             });
 
             this.gamePhase = 'results';
