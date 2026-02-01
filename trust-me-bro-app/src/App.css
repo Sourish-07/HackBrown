@@ -15,6 +15,8 @@ body {
 
 .App {
   min-height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
   background: 
     radial-gradient(circle at 20% 50%, rgba(0, 255, 136, 0.03) 0%, transparent 50%),
     radial-gradient(circle at 80% 50%, rgba(255, 0, 68, 0.03) 0%, transparent 50%),
@@ -105,7 +107,7 @@ body {
 
 header {
   text-align: center;
-  padding: 2rem 1rem;
+  padding: 1rem 1rem;
   position: relative;
   z-index: 2;
   border-bottom: 2px solid rgba(0, 255, 136, 0.2);
@@ -115,7 +117,7 @@ header {
 
 header h1 {
   font-family: 'Orbitron', sans-serif;
-  font-size: 2.5rem;
+  font-size: clamp(1.6rem, 3.2vw, 2.4rem);
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 3px;
@@ -135,7 +137,7 @@ header h1 {
 
 header p {
   color: #00ffff;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 2px;
   opacity: 0.8;
@@ -868,4 +870,22 @@ header p {
   .balance-amount {
     font-size: 2rem;
   }
+}
+.code-big {
+  text-align: center;
+  padding: 3rem 1rem;
+  background: rgba(10, 14, 20, 0.8);
+  border: 3px solid #00ff88;
+  border-radius: 16px;
+  max-width: 600px;
+  margin: 2rem auto;
+}
+
+.pin-display {
+  font-size: 8rem;
+  font-weight: 900;
+  letter-spacing: 1.5rem;
+  color: #00ff88;
+  text-shadow: 0 0 30px #00ff88;
+  margin: 1rem 0;
 }

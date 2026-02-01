@@ -1,0 +1,118 @@
+.landing {
+  min-height: 100vh;
+  background: #0a0e14;
+  color: #00ff88;
+  font-family: 'Orbitron', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.landing-grid {
+  width: 100%;
+  max-width: 1200px;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 2rem;
+  align-items: center;
+}
+
+.landing-title h1 {
+  font-size: clamp(2.6rem, 6vw, 4.6rem);
+  letter-spacing: 6px;
+  background: linear-gradient(90deg, #00ff88, #00ffff, #00ff88);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+}
+
+.subtitle {
+  font-size: clamp(1.1rem, 2.6vw, 1.6rem);
+  color: #00ffff;
+  letter-spacing: 2px;
+}
+
+.landing-card {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  background: rgba(10, 14, 20, 0.8);
+  border: 2px solid rgba(0, 255, 136, 0.35);
+  border-radius: 12px;
+}
+
+.landing-card h2 {
+  font-size: 1.1rem;
+  letter-spacing: 2px;
+  margin-bottom: 0.8rem;
+  color: #00ffff;
+  text-transform: uppercase;
+}
+
+.landing-card ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-family: 'Share Tech Mono', monospace;
+  color: #b2ffd5;
+}
+
+.landing-card li {
+  margin: 0.5rem 0;
+}
+
+.landing-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.btn-admin,
+.btn-player {
+  padding: 1.3rem 1.6rem;
+  font-size: clamp(1.1rem, 3vw, 1.6rem);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  border: 3px solid;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.btn-admin {
+  border-color: #00ff88;
+  color: #00ff88;
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.35);
+}
+
+.btn-admin:hover {
+  background: rgba(0, 255, 136, 0.2);
+  transform: translateY(-2px);
+}
+
+.btn-player {
+  border-color: #ff0044;
+  color: #ff0044;
+  box-shadow: 0 0 20px rgba(255, 0, 68, 0.35);
+}
+
+.btn-player:hover {
+  background: rgba(255, 0, 68, 0.2);
+  transform: translateY(-2px);
+}
+
+.landing-foot {
+  margin-top: 1.5rem;
+  font-size: 0.95rem;
+  color: #9aa7b3;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+@media (max-width: 900px) {
+  .landing-grid {
+    grid-template-columns: 1fr;
+  }
+}

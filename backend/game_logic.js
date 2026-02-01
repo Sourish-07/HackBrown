@@ -23,6 +23,7 @@ class GameLogic {
         this.history = [];
         this.lastAiData = null;
         this.lastGuess = null;
+        this.lastDeclared = null;
         // Player connection tracking
         this.connectedPlayers = {}; // { 1: socketId, 2: socketId }
         this.joinOrder = [];
@@ -72,6 +73,23 @@ class GameLogic {
     }
 
     /**
+     * Unregister a player when they disconnect
+     */
+    unregisterPlayer(playerId) {
+        if (!playerId) return;
+        delete this.connectedPlayers[playerId];
+        this.joinOrder = this.joinOrder.filter((id) => id !== playerId);
+        if (this.joinOrder.length < 2) {
+            this.subjectPlayer = null;
+            this.guesserPlayer = null;
+            this.gamePhase = 'waiting';
+            this.currentWager = 0;
+            this.lastGuess = null;
+            this.lastDeclared = null;
+        }
+    }
+
+    /**
      * Check if both players are connected
      */
     bothPlayersConnected() {
@@ -106,6 +124,17 @@ class GameLogic {
             return { success: true, wager: this.currentWager, declared: this.lastDeclared };
         }
         return { success: false, error: 'Invalid wager' };
+    }
+
+    /**
+     * Subject declares if their statement is truth or lie (kept private)
+     */
+    setDeclared(declared) {
+        if (declared !== 'truth' && declared !== 'lie') {
+            return { success: false, error: 'Invalid declaration' };
+        }
+        this.lastDeclared = declared;
+        return { success: true, declared: this.lastDeclared };
     }
 
     /**
@@ -206,6 +235,7 @@ class GameLogic {
         this.round++;
         this.currentWager = 0;
         this.lastGuess = null;
+        this.lastDeclared = null;
         this.currentRiskScore = 0;
         this.lastAiData = null;
         this.gamePhase = 'wagering';
@@ -225,7 +255,8 @@ class GameLogic {
             riskScore: Math.round(this.currentRiskScore),
             lastAiData: this.lastAiData,
             lastGuess: this.lastGuess,
-            connectedPlayers: Object.keys(this.connectedPlayers).map(p => parseInt(p))
+            connectedPlayers: Object.keys(this.connectedPlayers).map(p => parseInt(p)),
+            gamePin: this.gamePin
         };
     }
 }

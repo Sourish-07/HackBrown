@@ -61,9 +61,18 @@ app.post('/api/pi-data', (req, res) => {
 // Endpoint to reset game
 app.post('/api/reset', (req, res) => {
     gameLogic.reset();
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    countdownActive = false;
     broadcastToAll({
         type: 'GAME_RESET',
         data: gameLogic.getState()
+    });
+    broadcastMain({
+        type: 'GAME_PIN',
+        gamePin: gameLogic.gamePin
     });
     res.json({ status: 'reset' });
 });
@@ -91,7 +100,7 @@ wss.on('connection', (ws) => {
 
             // Registration: client identifies itself
             if (parsed.type === 'REGISTER') {
-                if (parsed.clientType === 'player') {
+                if (parsed.clientType === 'player' || parsed.clientType === 'phone') {
                     // Player joins with PIN, assigned by join order
                     const result = gameLogic.registerPlayer(ws, parsed.pin);
                     if (!result.success) {
@@ -110,7 +119,7 @@ wss.on('connection', (ws) => {
                 // Send current state to client
                 ws.send(JSON.stringify({
                     type: 'INIT',
-                    data: { ...gameLogic.getState(), gamePin: gameLogic.gamePin },
+                    data: gameLogic.getState(),
                     clientType: clientType,
                     playerId: playerId
                 }));
@@ -157,6 +166,17 @@ wss.on('connection', (ws) => {
                 } else {
                     ws.send(JSON.stringify({ type: 'ERROR', message: result.error }));
                 }
+            }
+
+            // Subject declares statement type (truth/lie) - keep private
+            if (parsed.type === 'DECLARE_STATEMENT') {
+                const declared = parsed.payload?.declared || parsed.payload;
+                const result = gameLogic.setDeclared(declared);
+                if (!result.success) {
+                    ws.send(JSON.stringify({ type: 'ERROR', message: result.error }));
+                    return;
+                }
+                ws.send(JSON.stringify({ type: 'DECLARED', declared: result.declared }));
             }
 
             // READY_STATEMENT is no longer used in this flow; subject does not press ready.
@@ -258,6 +278,17 @@ wss.on('connection', (ws) => {
         if (clientType) {
             clientMap[clientType] = null;
             console.log(`[WS] Disconnected: ${clientType}`);
+        }
+        if (playerId) {
+            gameLogic.unregisterPlayer(playerId);
+            broadcastMain({
+                type: 'PLAYERS_UPDATE',
+                data: gameLogic.getState()
+            });
+            broadcastToAll({
+                type: 'PHASE_UPDATE',
+                data: gameLogic.getState()
+            });
         }
     });
 });
