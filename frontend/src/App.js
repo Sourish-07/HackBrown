@@ -6,7 +6,7 @@ function App() {
   const [ws, setWs] = useState(null);
 
   useEffect(() => {
-    const socket = new GameWebSocket('ws://localhost:3001', (data) => {
+    const socket = new GameWebSocket('ws://localhost:3000', (data) => {
       if (data.type === 'UPDATE' || data.type === 'INIT' || data.type === 'BET_RESULT') {
         setGameState(data.data);
       }
@@ -33,7 +33,7 @@ function App() {
       <p>Applicant Balance: ${gameState.scores.hat_player_balance}</p>
       <p>Bank Balance: ${gameState.scores.opponent_balance}</p>
 
-      <button onClick={() => handleBet('truth')}>Approve</button>
+      <button onClick={() => handleBet('truth')}>Approv e</button>
       <button onClick={() => handleBet('lie')}>Deny</button>
 
       <p>Last Decision: {gameState.hat_decision}</p>
