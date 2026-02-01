@@ -54,24 +54,96 @@ def analyze_audio_gemini(text_transcript):
     """
     if not model:
         return {"deception_score": 0.5, "reasoning": "Gemini not configured"}
-    
     prompt = f"""
     Analyze the following statement for signs of deception, hesitation, or contradiction.
     Statement: "{text_transcript}"
-    
+
     Return a JSON object with:
     - deception_score (0.0 to 1.0, where 1.0 is high likelihood of lie)
     - reasoning (short explanation)
     """
-    
+
+    # Try a few common client call patterns and extract text robustly
+    attempts = []
     try:
-        response = model.generate_content(prompt)
-        # Parse logic would go here, mocking for stability if response isn't pure JSON
-        # In prod, use response.text extraction
-        return {"deception_score": 0.7, "reasoning": "Statement lacks specificity."}
-    except Exception as e:
-        print(f"Gemini API Error: {e}")
-        return {"deception_score": 0.5, "reasoning": "Analysis failed"}
+        # Some versions expose a top-level helper
+        attempts.append(lambda: genai.generate_text(model="gemini-1.5-pro", prompt=prompt))
+    except Exception:
+        pass
+    try:
+        # Chat-style API
+        attempts.append(lambda: genai.chat.completions.create(model="gemini-1.5-pro", messages=[{"role": "user", "content": prompt}]))
+    except Exception:
+        pass
+    try:
+        # If caller created a model object (older patterns)
+        attempts.append(lambda: model.generate(prompt))
+    except Exception:
+        pass
+    try:
+        attempts.append(lambda: model.generate_content(prompt))
+    except Exception:
+        pass
+
+    for attempt in attempts:
+        try:
+            resp = attempt()
+            # Try several common response shapes
+            text = None
+            if resp is None:
+                continue
+            # handle genai.generate_text -> resp.text or resp.output
+            if hasattr(resp, 'text'):
+                text = resp.text
+            elif isinstance(resp, dict) and 'output' in resp:
+                # service SDK sometimes returns dict with 'output'
+                out = resp.get('output')
+                if isinstance(out, list) and len(out) > 0:
+                    text = out[0].get('content') if isinstance(out[0], dict) else str(out[0])
+            elif isinstance(resp, dict) and 'candidates' in resp:
+                c = resp.get('candidates')
+                if isinstance(c, list) and len(c) > 0:
+                    text = c[0].get('content') or c[0].get('message') or str(c[0])
+            else:
+                # fallback to str()
+                text = str(resp)
+
+            if not text:
+                continue
+
+            # Attempt to extract JSON object from text
+            text = text.strip()
+            # If text contains a JSON blob, try to parse it
+            try:
+                # direct JSON
+                parsed = json.loads(text)
+                if 'deception_score' in parsed:
+                    return {"deception_score": float(parsed['deception_score']), "reasoning": parsed.get('reasoning', '')}
+            except Exception:
+                # Try to find a JSON substring
+                import re
+                m = re.search(r"(\{[\s\S]*\})", text)
+                if m:
+                    try:
+                        parsed = json.loads(m.group(1))
+                        if 'deception_score' in parsed:
+                            return {"deception_score": float(parsed['deception_score']), "reasoning": parsed.get('reasoning', '')}
+                    except Exception:
+                        pass
+
+            # If we couldn't parse JSON, do a small heuristic: look for percentage or 'likely lie'
+            lowered = text.lower()
+            if 'lie' in lowered or 'decept' in lowered:
+                # conservative score
+                return {"deception_score": 0.75, "reasoning": (lowered[:200])}
+            # fallback to neutral
+            return {"deception_score": 0.5, "reasoning": text[:200]}
+        except Exception as e:
+            print(f"Gemini attempt failed: {e}")
+
+    # If we reached here, all attempts failed
+    print("Gemini: all client attempts failed or returned no usable text")
+    return {"deception_score": 0.5, "reasoning": "Gemini unavailable or unsupported client - using fallback"}
 
 def main():
     print("Starting AI Inference Hat (Advanced Mode)...")

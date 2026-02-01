@@ -13,6 +13,18 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
 
+// Track connected clients by type
+const clientMap = {
+    main: null,           // Main spectator screen
+    player_1: null,       // Player 1 phone
+    player_2: null        // Player 2 phone
+};
+
+// Countdown state for inter-round delay
+let countdownInterval = null;
+let countdownRemaining = 0;
+let countdownActive = false;
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
@@ -22,23 +34,22 @@ app.use(bodyParser.json());
 // Endpoint for Raspberry Pi to send analysis data
 app.post('/api/pi-data', (req, res) => {
     const data = req.body; 
-    // Expecting: { lie_probability: number, metrics: { presage, gemini } }
     
     if (typeof data.lie_probability === 'undefined') {
         return res.status(400).json({ error: 'Missing lie_probability' });
     }
 
-    // Update Game Logic
     gameLogic.updateAiData(data);
 
-    // Log for demo purposes
     if(data.metrics && data.metrics.gemini) {
         console.log(`[Gemini] Analysis: ${data.metrics.gemini.reasoning}`);
     }
     console.log(`[System] Risk Score Updated: ${gameLogic.currentRiskScore}`);
 
-    // Broadcast to all connected WebSocket clients (Frontend)
-    broadcastState();
+    broadcastMain({
+        type: 'BIOMETRICS_UPDATE',
+        data: gameLogic.getState()
+    });
 
     res.json({ status: 'received' });
 });
@@ -46,66 +57,199 @@ app.post('/api/pi-data', (req, res) => {
 // Endpoint to reset game
 app.post('/api/reset', (req, res) => {
     gameLogic.reset();
-    broadcastState();
-    res.json({ status: 'reset', state: gameLogic.getState() });
+    broadcastToAll({
+        type: 'GAME_RESET',
+        data: gameLogic.getState()
+    });
+    res.json({ status: 'reset' });
 });
 
 // --- WebSocket Logic ---
 
 wss.on('connection', (ws) => {
-    console.log('New WebSocket connection');
-
-    // Send initial state
-    ws.send(JSON.stringify({
-        type: 'INIT',
-        data: formatBroadcastData(gameLogic.getState(), gameLogic.lastAiData, null)
-    }));
+    console.log('[WS] New connection');
+    let clientType = null;
+    let playerId = null;
 
     ws.on('message', (message) => {
         try {
             const parsed = JSON.parse(message);
+            console.log('[WS] Message:', parsed.type);
 
-            // Handle messages from Frontend (e.g., placing a bet)
-            if (parsed.type === 'BET') {
-                const bet = parsed.payload; // 'truth' or 'lie'
-                const result = gameLogic.placeBet(bet);
-                
-                // Broadcast result of the bet
-                broadcastToAll({
-                    type: 'BET_RESULT',
-                    data: result,
-                    state: formatBroadcastData(gameLogic.getState(), gameLogic.lastAiData, null)
+            // Registration: client identifies itself
+            if (parsed.type === 'REGISTER') {
+                if (parsed.clientType === 'player') {
+                    // Player joins with PIN, assigned by join order
+                    const result = gameLogic.registerPlayer(ws, parsed.pin);
+                    if (!result.success) {
+                        ws.send(JSON.stringify({ type: 'PIN_ERROR', message: result.message }));
+                        return;
+                    }
+                    clientType = `player_${result.playerId}`;
+                    playerId = result.playerId;
+                    clientMap[clientType] = ws;
+                    ws.send(JSON.stringify({ type: 'PLAYER_ASSIGNED', playerId: result.playerId }));
+                } else {
+                    clientType = parsed.clientType; // 'main'
+                    clientMap[clientType] = ws;
+                }
+                console.log(`[WS] Registered: ${clientType} (player ${playerId || ''})`);
+                // Send current state to client
+                ws.send(JSON.stringify({
+                    type: 'INIT',
+                    data: { ...gameLogic.getState(), gamePin: gameLogic.gamePin },
+                    clientType: clientType,
+                    playerId: playerId
+                }));
+                // Always broadcast the current PIN to main display
+                if (clientType === 'main') {
+                    ws.send(JSON.stringify({
+                        type: 'GAME_PIN',
+                        gamePin: gameLogic.gamePin
+                    }));
+                }
+                // Notify main screen of status
+                broadcastMain({
+                    type: 'PLAYERS_UPDATE',
+                    data: gameLogic.getState()
                 });
+                // If both players connected, start the round and notify them
+                if (gameLogic.bothPlayersConnected()) {
+                    // Assign roles according to join order: first joiner = subject (hat), second = guesser
+                    if (typeof gameLogic.assignRolesFromJoinOrder === 'function') {
+                        gameLogic.assignRolesFromJoinOrder();
+                    } else {
+                        // fallback: keep previous defaults
+                        gameLogic.gamePhase = 'wagering';
+                    }
+                    broadcastToAll({ type: 'GAME_START', data: gameLogic.getState() });
+                }
             }
             
-            // Handle messages from Pi (if Pi uses WS instead of REST)
-            if (parsed.type === 'PI_DATA') {
-                const aiData = parsed.payload;
-                gameLogic.updateAiData(aiData);
-                broadcastState();
+            // Player sets wager (may include declared truth/lie)
+            if (parsed.type === 'SET_WAGER') {
+                const payload = parsed.payload;
+                const result = gameLogic.setWager(payload);
+                if (result.success) {
+                    // Notify main and players of wager and phase change
+                    // Do NOT broadcast the declarer's declared choice to main/clients
+                    broadcastMain({
+                        type: 'WAGER_SET',
+                        data: { wager: result.wager, guesser: gameLogic.guesserPlayer }
+                    });
+                    broadcastToAll({
+                        type: 'PHASE_UPDATE',
+                        data: gameLogic.getState()
+                    });
+                } else {
+                    ws.send(JSON.stringify({ type: 'ERROR', message: result.error }));
+                }
+            }
+
+            // READY_STATEMENT is no longer used in this flow; subject does not press ready.
+
+            // Start guessing phase
+            if (parsed.type === 'START_GUESS') {
+                gameLogic.startGuessing();
+                broadcastMain({
+                    type: 'GUESSING_PHASE',
+                    data: gameLogic.getState()
+                });
+                broadcastToAll({
+                    type: 'PHASE_UPDATE',
+                    data: gameLogic.getState()
+                });
+            }
+
+            // Guesser makes guess
+            if (parsed.type === 'MAKE_GUESS') {
+                const guess = parsed.payload;
+                // Broadcast the guess immediately so main can show it
+                broadcastToAll({ type: 'GUESS_MADE', data: { guess, guesser: gameLogic.guesserPlayer } });
+
+                // Compute result
+                const result = gameLogic.makeGuess(guess);
+
+                // Pause 2s to allow main to show the guess animation, then broadcast result
+                setTimeout(() => {
+                    broadcastMain({ type: 'RESULT_PHASE', data: result });
+                    broadcastToAll({ type: 'RESULT', data: result });
+
+                    // Start 10s inter-round countdown (broadcast each second).
+                    // Clear any existing countdown
+                    if (countdownInterval) {
+                        clearInterval(countdownInterval);
+                        countdownInterval = null;
+                    }
+                    countdownRemaining = 10;
+                    countdownActive = true;
+                    // broadcast initial countdown state
+                    broadcastToAll({ type: 'COUNTDOWN', data: { seconds: countdownRemaining } });
+                    countdownInterval = setInterval(() => {
+                        countdownRemaining -= 1;
+                        if (countdownRemaining <= 0) {
+                            clearInterval(countdownInterval);
+                            countdownInterval = null;
+                            countdownActive = false;
+                            // Advance to next round
+                            gameLogic.nextRound();
+                            broadcastToAll({ type: 'NEXT_ROUND', data: gameLogic.getState() });
+                        } else {
+                            broadcastToAll({ type: 'COUNTDOWN', data: { seconds: countdownRemaining } });
+                        }
+                    }, 1000);
+                }, 2000);
+            }
+
+            // Skip countdown request from any client
+            if (parsed.type === 'SKIP_COUNTDOWN') {
+                if (countdownActive) {
+                    if (countdownInterval) {
+                        clearInterval(countdownInterval);
+                        countdownInterval = null;
+                    }
+                    countdownActive = false;
+                    // Immediately advance to next round
+                    gameLogic.nextRound();
+                    broadcastToAll({ type: 'NEXT_ROUND', data: gameLogic.getState() });
+                }
+            }
+
+            // Next round
+            if (parsed.type === 'NEXT_ROUND') {
+                gameLogic.nextRound();
+                broadcastToAll({
+                    type: 'NEXT_ROUND',
+                    data: gameLogic.getState()
+                });
             }
 
         } catch (e) {
-            console.error('Error parsing message:', e);
+            console.error('[WS] Error:', e);
+            ws.send(JSON.stringify({ type: 'ERROR', message: 'Invalid message' }));
         }
     });
 
     ws.on('close', () => {
-        console.log('Client disconnected');
+        if (clientType) {
+            clientMap[clientType] = null;
+            console.log(`[WS] Disconnected: ${clientType}`);
+        }
     });
 });
 
 /**
- * Broadcast current game state to all connected clients
+ * Broadcast to main screen only
  */
-function broadcastState() {
-    const broadcastData = formatBroadcastData(gameLogic.getState(), gameLogic.lastAiData, null);
-    broadcastToAll({
-        type: 'UPDATE',
-        data: broadcastData
-    });
+function broadcastMain(msgObj) {
+    if (clientMap.main && clientMap.main.readyState === WebSocket.OPEN) {
+        clientMap.main.send(JSON.stringify(msgObj));
+    }
 }
 
+/**
+ * Broadcast to all connected clients
+ */
 function broadcastToAll(msgObj) {
     const msgString = JSON.stringify(msgObj);
     wss.clients.forEach((client) => {
