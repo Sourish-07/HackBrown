@@ -148,15 +148,12 @@ function App() {
           {(metrics && Object.keys(metrics).length > 0) && (
             <div className="metrics">
               <h3>Live Biometrics</h3>
-              {metrics.presage && (
-                <div>
-                  <p>Heart Rate: {metrics.presage.heart_rate ?? '—'} BPM</p>
-                  <p>Stress Index: {typeof metrics.presage.stress_index === 'number' ? (metrics.presage.stress_index * 100).toFixed(1) + '%' : '—'}</p>
-                </div>
-              )}
               {metrics.gemini && metrics.gemini.reasoning && (
                 <div>
                   <p><strong>AI Analysis:</strong> {metrics.gemini.reasoning}</p>
+                  {metrics.gemini.tone_summary && (
+                    <p><strong>Tone:</strong> {metrics.gemini.tone_summary}</p>
+                  )}
                 </div>
               )}
             </div>
@@ -164,8 +161,8 @@ function App() {
           {/* Local biometrics component (camera + mic) */}
           <div>
             {/* lazy-load the component to avoid import cycles in some setups */}
-            <React.Suspense fallback={<div style={{padding:8}}>Loading biometrics…</div>}>
-              <BiometricsLazy />
+              <React.Suspense fallback={<div style={{padding:8}}>Loading biometrics…</div>}>
+              <BiometricsLazy presage={metrics.presage} />
             </React.Suspense>
           </div>
         </div>

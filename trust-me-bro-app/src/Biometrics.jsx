@@ -5,7 +5,7 @@ import React, { useRef, useEffect, useState } from 'react';
 // audio envelope. Displays heart rate as a simple SVG line chart and
 // shows breath rate as a number.
 
-export default function Biometrics() {
+export default function Biometrics({ presage }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -17,8 +17,18 @@ export default function Biometrics() {
   const [breathBpm, setBreathBpm] = useState(null);
   const [heartHistory, setHeartHistory] = useState([]);
   const [status, setStatus] = useState('disconnected');
+  const [usePresage, setUsePresage] = useState(false);
 
   useEffect(() => {
+    // If parent provides Presage metrics, prefer those and disable local estimates
+    if (presage && (presage.heart_rate || presage.breath_rate)) {
+      setUsePresage(true);
+      if (presage.heart_rate) setHeartBpm(Math.round(presage.heart_rate));
+      if (presage.breath_rate) setBreathBpm(Math.round(presage.breath_rate));
+    } else {
+      setUsePresage(false);
+    }
+
     let mounted = true;
     const sampleRate = 10; // samples/sec for our envelope measurements
     const maxSamples = sampleRate * 12; // keep last 12s
@@ -88,8 +98,8 @@ export default function Biometrics() {
             if (audioEnv.length > maxSamples) audioEnv.shift();
           }
 
-          // estimate heart rate from greenSamples
-          if (greenSamples.length >= sampleRate * 4) {
+          // estimate heart rate from greenSamples (only if not using Presage server data)
+          if (!usePresage && greenSamples.length >= sampleRate * 4) {
             const bpm = estimateRateFromSignal(greenSamples, sampleRate, 40, 180);
             if (bpm) {
               setHeartBpm(Math.round(bpm));
@@ -101,8 +111,8 @@ export default function Biometrics() {
             }
           }
 
-          // estimate breath rate from audioEnv (slower)
-          if (audioEnv.length >= sampleRate * 6) {
+          // estimate breath rate from audioEnv (slower) if not using Presage
+          if (!usePresage && audioEnv.length >= sampleRate * 6) {
             const br = estimateRateFromSignal(audioEnv, sampleRate, 6, 36);
             if (br) setBreathBpm(Math.round(br));
           }
