@@ -20,13 +20,10 @@ BACKEND_URL = config["api_endpoint"]
 OPENROUTER_KEY = config.get("openrouter_api_key", "")
 APP_ORIGIN = config.get("app_origin", "http://localhost")
 APP_TITLE = config.get("app_title", "Inference Hat")
+CAMERA_INDEX = config.get("camera_index", 0)
 
-# OpenRouter model ID for Gemini 3 Flash (or any OpenRouter Gemini model)
-# Example: "google/gemini-3-flash-preview" if available in your OpenRouter account
-OPENROUTER_MODEL = config.get(
-    "openrouter_model",
-    "google/gemini-3-flash-preview",
-)
+# OpenRouter model ID for Gemini (e.g. "google/gemini-3-flash-preview")
+OPENROUTER_MODEL = config.get("openrouter_model", "google/gemini-3-flash-preview")
 
 # ---------- Audio configuration ----------
 
@@ -110,13 +107,13 @@ def audio_capture_thread():
         p.terminate()
 
 
-"""OpenRouter-based Gemini 3 Flash audio analysis for the Inference Hat."""
+"""Gemini audio analysis for the Inference Hat via OpenRouter only."""
 
 
 # ---------- OpenRouter / Gemini integration ----------
 
 def analyze_audio_gemini(audio_frames):
-    """Send a 20s audio chunk to Gemini via OpenRouter (chat/completions)."""
+    """Send a 20s audio chunk to a Gemini model via OpenRouter."""
     if not OPENROUTER_KEY or "YOUR_" in OPENROUTER_KEY:
         return {
             "deception_score": 0.5,
@@ -168,8 +165,8 @@ Return a JSON object with:
                             {
                                 "type": "input_audio",
                                 "input_audio": {
-                                    "mime_type": "audio/wav",
-                                    "audio": base64_audio,
+                                    "format": "wav",
+                                    "data": base64_audio,
                                 },
                             },
                         ],
@@ -182,7 +179,22 @@ Return a JSON object with:
 
         if response.status_code == 200:
             data = response.json()
-            text = data["choices"][0]["message"]["content"].strip()
+
+            # OpenRouter chat/completions: content can be a string or list
+            message = data["choices"][0]["message"]
+            content = message.get("content", "")
+            if isinstance(content, list):
+                text_parts = []
+                for part in content:
+                    # handle both generic and OpenAI-style multimodal parts
+                    if isinstance(part, dict):
+                        if "text" in part:
+                            text_parts.append(part["text"])
+                        elif part.get("type") in ("text", "output_text") and "text" in part:
+                            text_parts.append(part["text"])
+                text = "\n".join(text_parts).strip()
+            else:
+                text = str(content).strip()
 
             # Try to parse as JSON directly
             try:
