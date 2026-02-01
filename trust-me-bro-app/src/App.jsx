@@ -41,9 +41,8 @@ function App() {
       } else if (data.type === 'RESULT' || data.type === 'RESULT_PHASE') {
         setBetResult(data.data);
         setGameState(prev => ({ ...prev, ...data.data }));
-        // clear displayed declared/guess after showing result
+        // clear displayed guess after showing result
         setTimeout(() => {
-          setDisplayedSelection(null);
           setDisplayedGuess(null);
         }, 2000);
       } else if (data.type === 'NEXT_ROUND') {
@@ -119,9 +118,6 @@ function App() {
 
   return (
     <div className="App game-view">
-      {countdownRemaining !== null && (
-        <div className="main-countdown">Next round: {countdownRemaining}s</div>
-      )}
       <header>
         <h1>TRUST ME BRO</h1>
         <p>a lying game</p>
@@ -163,7 +159,10 @@ function App() {
 
         {/* Right: Game Status & Wager */}
         <div className="financial-panel">
-          <h3>Round {gameState.round}</h3>
+          <h3>Round {gameState.round} {countdownRemaining !== null && (
+              <span className="round-countdown">• Next {countdownRemaining}s</span>
+            )}
+          </h3>
           
           {/* Player Balances */}
           <div className="balances">
