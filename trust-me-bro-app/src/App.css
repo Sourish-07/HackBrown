@@ -85,6 +85,7 @@ body {
   letter-spacing: 4px;
   background: linear-gradient(90deg, #00ff88, #00ffff, #00ff88);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: pulse-glow 2s ease-in-out infinite;
 }
@@ -120,6 +121,7 @@ header h1 {
   letter-spacing: 3px;
   background: linear-gradient(90deg, #00ff88, #00ffff);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
   margin-bottom: 0.5rem;
@@ -137,6 +139,26 @@ header p {
   text-transform: uppercase;
   letter-spacing: 2px;
   opacity: 0.8;
+}
+
+.turn-indicator {
+  margin-top: 1rem;
+  padding: 0.8rem 1.5rem;
+  border: 2px solid;
+  border-radius: 6px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  display: inline-block;
+  text-shadow: 0 0 10px currentColor;
+  animation: turn-pulse 1s ease-in-out infinite;
+}
+
+@keyframes turn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 .game-container {
@@ -384,6 +406,11 @@ header p {
   transition: all 0.3s ease;
 }
 
+.balance-card.active-turn {
+  box-shadow: 0 0 30px currentColor, inset 0 0 20px currentColor;
+  transform: scale(1.05);
+}
+
 .balance-card::before {
   content: '';
   position: absolute;
@@ -437,20 +464,17 @@ header p {
   text-shadow: 0 0 20px currentColor;
 }
 
-.balance-card.player .balance-amount {
-  color: #00ff88;
-}
-
-.balance-card.opponent .balance-amount {
-  color: #ff0044;
-}
-
 /* Decision Buttons */
 .decision-buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
   margin-bottom: 2rem;
+}
+
+.decision-buttons.processing {
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .btn {
@@ -469,6 +493,15 @@ header p {
   transition: all 0.3s ease;
 }
 
+.btn.inactive {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.active {
+  cursor: pointer;
+}
+
 .btn::before {
   content: '';
   position: absolute;
@@ -482,29 +515,29 @@ header p {
   transition: width 0.6s, height 0.6s;
 }
 
-.btn:hover::before {
+.btn:hover:not(:disabled)::before {
   width: 300px;
   height: 300px;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   transform: translateY(-3px);
   box-shadow: 0 10px 40px currentColor;
 }
 
-.btn:active {
+.btn:active:not(:disabled) {
   transform: translateY(-1px);
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
   animation: processing 1.5s ease-in-out infinite;
 }
 
 @keyframes processing {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 0.8; }
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.6; }
 }
 
 .btn.approve {
@@ -513,7 +546,7 @@ header p {
   text-shadow: 0 0 10px #00ff88;
 }
 
-.btn.approve:hover {
+.btn.approve:hover:not(:disabled) {
   background: rgba(0, 255, 136, 0.2);
 }
 
@@ -523,7 +556,7 @@ header p {
   text-shadow: 0 0 10px #ff0044;
 }
 
-.btn.deny:hover {
+.btn.deny:hover:not(:disabled) {
   background: rgba(255, 0, 68, 0.2);
 }
 
@@ -610,17 +643,6 @@ header p {
   font-weight: 900;
 }
 
-/* Corner Accents */
-.risk-panel::after,
-.financial-panel > h3::before,
-.financial-panel > h3::after {
-  content: '';
-  position: absolute;
-  width: 20px;
-  height: 20px;
-  border: 2px solid;
-}
-
 .risk-score-display::after {
   content: '';
   position: absolute;
@@ -682,18 +704,131 @@ header p {
   }
 }
 
-/* Responsive Design */
+/* Split Screen for Waiting */
+.waiting-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  padding: 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 2;
+  min-height: calc(100vh - 200px);
+}
+
+.waiting-left,
+.waiting-right {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.status-icon {
+  font-size: 4rem;
+  margin: 2rem 0;
+  animation: bounce 2s ease-in-out infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-20px); }
+}
+
+.player-status {
+  background: rgba(0, 0, 0, 0.6);
+  border: 2px solid rgba(0, 255, 136, 0.3);
+  border-radius: 8px;
+  padding: 2rem;
+  margin-top: 2rem;
+  text-align: center;
+}
+
+.player-status h3 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #00ffff;
+  margin-bottom: 1rem;
+}
+
+.player-status p {
+  font-size: 1.1rem;
+  margin: 0.8rem 0;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+.player-status .connected {
+  color: #00ff88;
+  font-weight: bold;
+}
+
+.player-status .waiting {
+  color: rgba(0, 255, 136, 0.5);
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* Game In Progress View */
+.game-view {
+  min-height: 100vh;
+}
+
+.game-info {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #00ffff;
+  margin-top: 0.5rem;
+}
+
+/* Wager Display */
+.wager-display {
+  background: rgba(255, 0, 68, 0.1);
+  border: 2px solid #ff0044;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 2rem;
+  text-align: center;
+}
+
+.wager-display p {
+  margin: 0.5rem 0;
+  color: #ff0044;
+  font-size: 1.1rem;
+}
+
+.wager-display strong {
+  color: #ff0044;
+  font-weight: bold;
+}
+
+.phase-text {
+  font-size: 0.95rem !important;
+  color: rgba(255, 0, 68, 0.8) !important;
+  margin-top: 0.8rem;
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+.wager-result {
+  font-weight: bold;
+  color: #ff0044 !important;
+}
+
+/* Responsive */
 @media (max-width: 1024px) {
-  .game-container {
+  .waiting-split {
     grid-template-columns: 1fr;
   }
   
-  header h1 {
-    font-size: 2rem;
-  }
-  
-  .score-number {
-    font-size: 4rem;
+  .game-container {
+    grid-template-columns: 1fr !important;
   }
 }
 
