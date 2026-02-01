@@ -25,6 +25,10 @@ let countdownInterval = null;
 let countdownRemaining = 0;
 let countdownActive = false;
 
+// Queue for hat audio callouts (played via ElevenLabs on the hardware)
+const hatCalloutQueue = [];
+const MAX_HAT_CALLOUTS = 5;
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
@@ -71,6 +75,15 @@ app.post('/api/reset', (req, res) => {
         gamePin: gameLogic.gamePin
     });
     res.json({ status: 'reset' });
+});
+
+// Hat hardware polls this endpoint to retrieve queued TTS callouts
+app.get('/api/hat-callout', (req, res) => {
+    if (!hatCalloutQueue.length) {
+        return res.json({ pending: false });
+    }
+    const nextCallout = hatCalloutQueue.shift();
+    return res.json({ pending: true, callout: nextCallout });
 });
 
 // --- WebSocket Logic ---
@@ -184,6 +197,17 @@ wss.on('connection', (ws) => {
             // Guesser makes guess
             if (parsed.type === 'MAKE_GUESS') {
                 const guess = parsed.payload;
+                const stateSnapshot = gameLogic.getState();
+                queueHatCallout({
+                    guess,
+                    player: gameLogic.guesserPlayer,
+                    subject: gameLogic.subjectPlayer,
+                    transcript: stateSnapshot?.lastAiData?.transcript
+                        || stateSnapshot?.lastAiData?.metrics?.gemini?.transcript
+                        || '',
+                    round: stateSnapshot.round,
+                    timestamp: Date.now()
+                });
                 // Broadcast the guess immediately so main can show it
                 broadcastToAll({ type: 'GUESS_MADE', data: { guess, guesser: gameLogic.guesserPlayer } });
 
@@ -268,6 +292,16 @@ wss.on('connection', (ws) => {
         }
     });
 });
+
+function queueHatCallout(callout) {
+    if (!callout || !callout.guess) {
+        return;
+    }
+    hatCalloutQueue.push(callout);
+    if (hatCalloutQueue.length > MAX_HAT_CALLOUTS) {
+        hatCalloutQueue.shift();
+    }
+}
 
 /**
  * Broadcast to main screen only
