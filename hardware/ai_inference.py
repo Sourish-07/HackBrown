@@ -7,9 +7,9 @@ import pyaudio
 import wave
 import base64
 import io
+import os
 from threading import Thread
 from queue import Queue
-
 
 # ---------- Config ----------
 
@@ -18,11 +18,11 @@ with open("config.json") as f:
 
 BACKEND_URL = config["api_endpoint"]
 OPENROUTER_KEY = config.get("openrouter_api_key", "")
+PRESAGE_KEY = config.get("presage_api_key", "")
 APP_ORIGIN = config.get("app_origin", "http://localhost")
 APP_TITLE = config.get("app_title", "Inference Hat")
 CAMERA_INDEX = config.get("camera_index", 0)
 
-# OpenRouter model ID for Gemini (e.g. "google/gemini-3-flash-preview")
 OPENROUTER_MODEL = config.get("openrouter_model", "google/gemini-3-flash-preview")
 
 # ---------- Audio configuration ----------
@@ -36,29 +36,13 @@ RECORD_SECONDS = 20  # Analyze every 20 seconds of audio
 # Queue for audio samples (each item is a list of raw frames)
 audio_queue = Queue()
 
+# ---------- Video configuration for Presage ----------
 
-# ---------- Mock camera / physiology ----------
+VIDEO_FPS = 30
+VIDEO_SECONDS = 20  # Analyze every 20 seconds of video, similar to audio
 
-def capture_frames():
-    """Placeholder for camera capture (not used yet)."""
-    pass
-
-
-def analyze_frame_presage(frame):
-    """Mock PresageTech physiology analysis from camera frames."""
-    return {
-        "heart_rate": int(random.gauss(80, 5)),
-        "breathing_rate": int(random.gauss(16, 2)),
-        "stress_index": round(random.random(), 2),
-        "engagement": round(random.random(), 2),
-        "facial_emotions": {
-            "happiness": round(random.random(), 2),
-            "surprise": round(random.random(), 2),
-            "fear": round(random.random(), 2),
-            "neutral": round(random.random(), 2),
-        },
-    }
-
+# Queue for video frames lists
+video_queue = Queue()
 
 # ---------- Audio helpers ----------
 
@@ -74,7 +58,6 @@ def audio_to_base64_wav(audio_frames, rate=RATE, channels=CHANNELS):
     wav_buffer.seek(0)
     wav_data = wav_buffer.read()
     return base64.b64encode(wav_data).decode("utf-8")
-
 
 def audio_capture_thread():
     """Continuously captures microphone input and enqueues 20s chunks."""
@@ -105,10 +88,6 @@ def audio_capture_thread():
         stream.stop_stream()
         stream.close()
         p.terminate()
-
-
-"""Gemini audio analysis for the Inference Hat via OpenRouter only."""
-
 
 # ---------- OpenRouter / Gemini integration ----------
 
@@ -186,7 +165,6 @@ Return a JSON object with:
             if isinstance(content, list):
                 text_parts = []
                 for part in content:
-                    # handle both generic and OpenAI-style multimodal parts
                     if isinstance(part, dict):
                         if "text" in part:
                             text_parts.append(part["text"])
@@ -259,22 +237,134 @@ Return a JSON object with:
             "transcript": "",
         }
 
+# ---------- Presage API integration ----------
+
+def mock_presage_data():
+    """Mock Presage data when API key is not set or API call fails."""
+    return {
+        "heart_rate": int(random.gauss(80, 5)),
+        "breathing_rate": int(random.gauss(16, 2)),
+        "stress_index": round(random.random(), 2),
+        "engagement": round(random.random(), 2),
+        "facial_emotions": {
+            "happiness": round(random.random(), 2),
+            "surprise": round(random.random(), 2),
+            "fear": round(random.random(), 2),
+            "neutral": round(random.random(), 2),
+        },
+    }
+
+def analyze_video_presage(video_frames):
+    """Analyze video frames using Presage API if key is provided, else mock."""
+    if not PRESAGE_KEY or "YOUR_" in PRESAGE_KEY:
+        print("Presage API key not configured, using mock data")
+        return mock_presage_data()
+
+    if not video_frames:
+        return mock_presage_data()
+
+    # Create MP4 video in temporary file
+    try:
+        height, width, _ = video_frames[0].shape
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        temp_filename = 'temp.mp4'
+        writer = cv2.VideoWriter(temp_filename, fourcc, VIDEO_FPS, (width, height), True)
+
+        for frame in video_frames:
+            writer.write(frame)
+
+        writer.release()
+
+        with open(temp_filename, 'rb') as f:
+            video_data = f.read()
+
+        os.remove(temp_filename)
+
+        base64_video = base64.b64encode(video_data).decode('utf-8')
+
+        # Send to Presage API
+        # NOTE: Replace 'https://physiology.presagetech.com/api/v1/analyze' with the actual Presage API endpoint for video analysis
+        response = requests.post(
+            "https://physiology.presagetech.com/api/v1/analyze",
+            headers={
+                "Authorization": f"Bearer {PRESAGE_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "video": base64_video,
+                "format": "mp4",
+                "biometrics": ["heart_rate", "breathing_rate", "stress_index", "engagement", "facial_emotions"]
+            },
+            timeout=60
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            # Assume the response has the expected structure; adjust parsing as per actual API response
+            return {
+                "heart_rate": data.get("heart_rate", int(random.gauss(80, 5))),
+                "breathing_rate": data.get("breathing_rate", int(random.gauss(16, 2))),
+                "stress_index": data.get("stress_index", round(random.random(), 2)),
+                "engagement": data.get("engagement", round(random.random(), 2)),
+                "facial_emotions": data.get("facial_emotions", {
+                    "happiness": round(random.random(), 2),
+                    "surprise": round(random.random(), 2),
+                    "fear": round(random.random(), 2),
+                    "neutral": round(random.random(), 2),
+                }),
+            }
+        else:
+            print(f"Presage API error: {response.status_code} - {response.text}")
+            return mock_presage_data()
+
+    except Exception as e:
+        print(f"Presage request failed: {e}")
+        return mock_presage_data()
+
+def video_capture_thread():
+    """Continuously captures video frames and enqueues 20s chunks."""
+    cap = cv2.VideoCapture(CAMERA_INDEX)
+    if not cap.isOpened():
+        print("Error opening video capture")
+        return
+
+    print("Video capture started...")
+
+    frames = []
+    frames_per_20s = VIDEO_FPS * VIDEO_SECONDS
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if ret:
+                frames.append(frame)
+            if len(frames) >= frames_per_20s:
+                video_queue.put(frames[:frames_per_20s])
+                frames = frames[frames_per_20s:]  # Overlap if more
+            time.sleep(1 / VIDEO_FPS)
+    except Exception as e:
+        print(f"Video capture error: {e}")
+    finally:
+        cap.release()
 
 # ---------- Main loop ----------
 
 def main():
-    print("Starting AI Inference Hat (Gemini 3 Flash, 20s audio)...")
+    print("Starting AI Inference Hat (Gemini 3 Flash, 20s audio/video)...")
 
     audio_thread = Thread(target=audio_capture_thread, daemon=True)
     audio_thread.start()
 
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    video_thread = Thread(target=video_capture_thread, daemon=True)
+    video_thread.start()
 
     gemini_analysis = {
         "deception_score": 0.5,
         "reasoning": "Initializing...",
         "transcript": "",
     }
+
+    presage_data = mock_presage_data()  # Initial mock
 
     try:
         while True:
@@ -285,7 +375,11 @@ def main():
                 gemini_analysis = analyze_audio_gemini(current_audio)
                 print(f"Transcript: {gemini_analysis.get('transcript', 'N/A')}")
 
-            presage_data = analyze_frame_presage(None)
+            # When a new 20-second video chunk is ready, analyze it
+            if not video_queue.empty():
+                current_video = video_queue.get()
+                print("Analyzing 20s video chunk with Presage...")
+                presage_data = analyze_video_presage(current_video)
 
             # Simple sensor fusion of physiology + audio analysis
             W_stress = 0.3
@@ -333,9 +427,6 @@ def main():
 
     except KeyboardInterrupt:
         print("\nStopping...")
-    finally:
-        cap.release()
-
 
 if __name__ == "__main__":
     main()
