@@ -47,6 +47,7 @@ export function PhoneClient() {
       } else if (data.type === 'RESULT') {
         setGameState(data.data);
         setPhase('results');
+        setLoading(false);
       } else if (data.type === 'NEXT_ROUND') {
         setGameState(data.data);
         setPhase('wagering');
@@ -55,6 +56,7 @@ export function PhoneClient() {
         setDeclaredChoice(null);
         setCountdownActive(false);
         setCountdownRemaining(null);
+        setLoading(false);
       }
     });
     socket.connect();
