@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { GameWebSocket } from './websocket';
 import QRDisplay from './QRDisplay';
 import './App.css';
+// lazy import to avoid earlier bundling issues
+const BiometricsLazy = React.lazy(() => import('./Biometrics'));
 
 function App() {
   const [gameState, setGameState] = useState(null);
@@ -155,6 +157,13 @@ function App() {
               )}
             </div>
           )}
+          {/* Local biometrics component (camera + mic) */}
+          <div>
+            {/* lazy-load the component to avoid import cycles in some setups */}
+            <React.Suspense fallback={<div style={{padding:8}}>Loading biometrics…</div>}>
+              <BiometricsLazy />
+            </React.Suspense>
+          </div>
         </div>
 
         {/* Right: Game Status & Wager */}
