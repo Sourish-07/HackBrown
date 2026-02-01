@@ -1,78 +1,127 @@
-# Lie-Detecting Hat: Advanced Biometric Risk Assessment System
+# Trust Me Bro
 
-> **HackBrown 2026 Project**
-> *Integrating Capital One Financial Analysis, Google Gemini AI, and PresageTech Biometrics.*
+## Overview
+This project is a real-time lie detection system integrated into a wearable hat, designed for Hack@Brown 2026. It combines biometric sensors, AI inference, and a gamified financial risk assessment interface. The system analyzes physiological signals (e.g., heart rate, stress levels) and linguistic cues to compute a lie probability score, which is used in a betting game simulating financial decision-making, such as credit approval or fraud detection.
 
-##  Project Overview
-This project transforms a standard webcam and microphone into a high-stakes **Financial Risk Assessment Tool**. By fusing physiological data (Heart Rate, Stress) with linguistic analysis (LLM-based deception detection), we determine the "creditworthiness" of a subject in real-time.
+Key features:
+- **Hardware**: Raspberry Pi-based sensor fusion using computer vision for biometrics and Google Gemini for deception analysis.
+- **Backend**: Node.js server handling data ingestion, game logic, and real-time updates via WebSockets.
+- **Frontend**: React dashboard for visualizing biometrics, risk scores, and placing bets (truth/lie).
 
-##  Hackathon Tracks Implemented
+The project targets hackathon tracks like Capital One's Best Financial Hack (risk modeling), MLH's Best Use of Gemini API (linguistic analysis), and Best Use of Presage (physiological monitoring).
 
-### 1. Capital One - Best Financial Hack 
-**The "Loan Interview" Protocol:**
-- Instead of a simple "Lie Detector", we built a **Financial Risk Engine**.
-- The backend tracks **Applicant Balance** vs. **Bank Reserves**.
-- A high "Risk Score" (derived from stress + deception) triggers a "Deny/Fraud" recommendation.
-- Game Theory: The banker (opponent) bets on the risk model to protect capital.
+## Tech Stack
+- **Hardware/Edge**: Python 3 with OpenCV, NumPy, Requests, Google Generative AI (Gemini), and mocked Presage SDK.
+- **Backend**: Node.js, Express.js, WebSocket (ws), CORS, Body-Parser.
+- **Frontend**: React.js, Chart.js for visualizations.
+- **Other**: JSON for configs, HTTP/WS for communication.
 
-### 2. MLH - Best Use of Gemini API 
-**Linguistic Deception Analysis:**
-- We use **Google Gemini 1.5 Pro** to analyze spoken statements in real-time.
-- The Python hardware client captures audio transcripts and prompts Gemini to identify:
-  - Hesitation markers
-  - Contradictions
-  - Distancing language
-- **Tech:** `google.generativeai` Python SDK streaming analysis to the Node.js backend.
+## Installation
 
-### 3. MLH - Best Use of Presage 
-**Human Sensing Layer:**
-- We simulate the **PresageTech Physiology SDK** to extract clinical-grade biometrics from video:
-  - **Heart Rate (BPM)**
-  - **Stress Index (HRV-derived)**
-  - **Facial Emotions (Micro-expressions)**
-- **Sensor Fusion:** These metrics are mathematically weighted against Gemini output to calculate the final Risk Score.
+### Prerequisites
+- Node.js (v18+)
+- Python 3.8+
+- Raspberry Pi (optional for real hardware; simulator works on any machine)
+- API Keys: Google Gemini (for text analysis), Presage (for biometrics; mocked if unavailable)
 
----
+### Setup Steps
 
-##  Tech Stack & Structure
+1. **Clone the Repository**
+   ```
+   git clone https://github.com/Sourish-07/HackBrown.git
+   cd HackBrown
+   ```
 
-- **Hardware (`/hardware`)**: 
-  - Python client for Raspberry Pi / Laptop.
-  - Runs Computer Vision (OpenCV) and connects to Gemini API.
-  - Sends JSON telemetry to Backend via REST API.
-- **Backend (`/backend`)**: 
-  - Node.js + Express + WebSockets (`ws`).
-  - Manages Game State, Financial Logic, and real-time broadcasting.
-- **Frontend (`/frontend`)**: 
-  - React.js Dashboard.
-  - Visualizes Risk Scores, Live Biometrics, and Financial Balances.
+2. **Backend**
+   ```
+   cd backend
+   npm install
+   ```
 
-##  Quick Start
+3. **Frontend**
+   ```
+   cd frontend
+   npm install
+   ```
 
-### 1. Backend (Server)
-```bash
-cd backend
-npm install
-npm start
-# Runs on http://localhost:3000
-```
+4. **Hardware**
+   ```
+   cd hardware
+   pip install -r requirements.txt
+   cp config.example.json config.json
+   ```
+   Edit `config.json`:
+   - Set `api_endpoint` to your backend URL (default: `http://localhost:3000/api/pi-data`).
+   - Add `gemini_api_key` (required for real Gemini; fallback mock otherwise).
+   - Add `presage_api_key` if using actual Presage SDK.
 
-### 2. Frontend (UI)
-```bash
-cd frontend
-npm install
-npm start
-# Opens in browser
-```
+## Usage
 
-### 3. Hardware (Data Source)
-```bash
-# In a new terminal
-.\venv\Scripts\Activate.ps1
-cd hardware
-python ai_inference.py
-```
-*Note: Ensure `hardware/config.json` has your valid API keys.*
+1. **Start Backend**
+   ```
+   cd backend
+   npm start
+   ```
+   Server runs on `http://localhost:3000`. WebSocket at `ws://localhost:3000`.
 
-##  Testing
-See [TESTING.md](./TESTING.md) for detailed validation steps and manual API triggers.
+2. **Start Frontend**
+   ```
+   cd frontend
+   npm start
+   ```
+   Opens at `http://localhost:3000` (React default; proxies to backend if configured).
+
+3. **Run Hardware Inference**
+   ```
+   cd hardware
+   python ai_inference.py
+   ```
+   Simulates camera input and sends data to backend every 2 seconds. In real setup, connects to Raspberry Pi camera.
+
+4. **Interact**
+   - Open the frontend in a browser to view live biometrics (heart rate, stress, emotions), risk score, and game state (balances, stake).
+   - Place bets via the UI (truth or lie) to simulate financial decisions.
+   - Backend logs show Gemini reasoning and risk updates.
+   - Use the `/api/reset` endpoint to reset the game.
+
+## How It Works
+
+### Hardware (ai_inference.py)
+- Captures video frames from camera (OpenCV).
+- Analyzes physiology using mocked Presage functions: extracts heart rate, breathing, stress, and facial emotions (randomized for demo; real SDK would use video-based rPPG).
+- Analyzes transcribed statements with Google Gemini: prompts for deception score and reasoning.
+- Fuses data with weights (stress 30%, fear 20%, linguistic 50%) to compute lie probability (0-100).
+- Sends JSON payload to backend: `{lie_probability, timestamp, metrics: {presage, gemini}}`.
+
+### Backend
+- **server.js**: Sets up Express for REST APIs and WebSocket for real-time. Handles Pi data POST, updates game logic, broadcasts state.
+- **game_logic.js**: Manages game state (rounds, balances, stakes). Updates risk score from AI data. Processes bets: compares to thresholds (high risk >75 = lie, low <40 = truth). Adjusts balances, logs history.
+- **utils.js**: Formats data for consistent broadcasting (timestamps, scores, metrics).
+
+### Frontend
+- React app with components for dashboard (inferred from dependencies: uses Chart.js for biometric charts).
+- Connects to WebSocket for live updates: displays risk score, biometrics, Gemini reasoning, and bet buttons.
+- Bets sent via WS; results update balances in real-time.
+
+### Data Flow
+1. Hardware → Backend (HTTP POST with AI metrics).
+2. Backend processes, updates risk/game state.
+3. Backend → Frontend (WS broadcast: updates, bet results).
+4. Frontend → Backend (WS: bet placements).
+
+## Testing
+See [TESTING.md](TESTING.md) for detailed validation steps, including API curls for simulation and track-specific verifications.
+
+## Limitations & Future Work
+- Presage and Gemini are partially mocked for demo (real keys enable full functionality).
+- No actual audio transcription (assumes pre-transcribed text).
+- Enhance with real sensors (e.g., microphone for STT).
+- Add more financial metrics (e.g., dynamic payouts based on risk confidence).
+
+## Contributors
+- Sourish Mudumby Venugopal
+- Rayhan Mohamed
+- Shrish Mudumby Venugopal
+- Lauren Bell
+
+Built during Hack@Brown 2026.
