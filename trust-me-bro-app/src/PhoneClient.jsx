@@ -154,6 +154,12 @@ export function PhoneClient() {
   const handleGuess = (guess) => {
     if (ws) {
       setLoading(true);
+      
+      // Play audio based on the guess
+      const audioFile = guess === 'truth' ? '/TRUTH.mp3' : '/DIRTY_LIES.mp3';
+      const audio = new Audio(audioFile);
+      audio.play().catch(err => console.error('Audio playback failed:', err));
+      
       ws.ws.send(JSON.stringify({
         type: 'MAKE_GUESS',
         payload: guess
