@@ -1,6 +1,5 @@
 import time
 import json
-import random
 import requests
 import cv2
 import pyaudio
@@ -242,15 +241,15 @@ Return a JSON object with:
 def mock_presage_data():
     """Mock Presage data when API key is not set or API call fails."""
     return {
-        "heart_rate": int(random.gauss(80, 5)),
-        "breathing_rate": int(random.gauss(16, 2)),
-        "stress_index": round(random.random(), 2),
-        "engagement": round(random.random(), 2),
+        "heart_rate": 80,
+        "breathing_rate": 16,
+        "stress_index": 0.5,
+        "engagement": 0.5,
         "facial_emotions": {
-            "happiness": round(random.random(), 2),
-            "surprise": round(random.random(), 2),
-            "fear": round(random.random(), 2),
-            "neutral": round(random.random(), 2),
+            "happiness": 0.5,
+            "surprise": 0.5,
+            "fear": 0.5,
+            "neutral": 0.5,
         },
     }
 
@@ -283,9 +282,9 @@ def analyze_video_presage(video_frames):
         base64_video = base64.b64encode(video_data).decode('utf-8')
 
         # Send to Presage API
-        # NOTE: Replace 'https://physiology.presagetech.com/api/v1/analyze' with the actual Presage API endpoint for video analysis
+        # NOTE: Replace 'https://physiology.presagetech.com/api/v1/analyze' with the actual Presage API endpoint for video analysis if different
         response = requests.post(
-            "https://physiology.presagetech.com/api/v1/analyze",
+            "TrUTXUlCZp9YslujE0dsA4wHS7hk1wnKauw9IGJY",
             headers={
                 "Authorization": f"Bearer {PRESAGE_KEY}",
                 "Content-Type": "application/json"
@@ -301,16 +300,17 @@ def analyze_video_presage(video_frames):
         if response.status_code == 200:
             data = response.json()
             # Assume the response has the expected structure; adjust parsing as per actual API response
+            # If the API returns an error message in the JSON, it will fall back to defaults
             return {
-                "heart_rate": data.get("heart_rate", int(random.gauss(80, 5))),
-                "breathing_rate": data.get("breathing_rate", int(random.gauss(16, 2))),
-                "stress_index": data.get("stress_index", round(random.random(), 2)),
-                "engagement": data.get("engagement", round(random.random(), 2)),
+                "heart_rate": data.get("heart_rate", 80),
+                "breathing_rate": data.get("breathing_rate", 16),
+                "stress_index": data.get("stress_index", 0.5),
+                "engagement": data.get("engagement", 0.5),
                 "facial_emotions": data.get("facial_emotions", {
-                    "happiness": round(random.random(), 2),
-                    "surprise": round(random.random(), 2),
-                    "fear": round(random.random(), 2),
-                    "neutral": round(random.random(), 2),
+                    "happiness": 0.5,
+                    "surprise": 0.5,
+                    "fear": 0.5,
+                    "neutral": 0.5,
                 }),
             }
         else:
@@ -364,7 +364,7 @@ def main():
         "transcript": "",
     }
 
-    presage_data = mock_presage_data()  # Initial mock
+    presage_data = mock_presage_data()  # Initial mock with fixed values
 
     try:
         while True:

@@ -1,6 +1,15 @@
+const resolveWsUrl = () => {
+  const envUrl = import.meta?.env?.VITE_WS_URL;
+  if (envUrl) return envUrl;
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const host = window.location.hostname || 'localhost';
+  const port = import.meta?.env?.VITE_BACKEND_PORT || '3000';
+  return `${protocol}://${host}:${port}`;
+};
+
 export class GameWebSocket {
   constructor(url, onMessage) {
-    this.url = url;
+    this.url = url || resolveWsUrl();
     this.onMessage = onMessage;
     this.ws = null;
     this.reconnectAttempts = 0;
@@ -54,14 +63,11 @@ export class GameWebSocket {
     }
   }
 
-  sendBet(betType) {
+  sendMessage(payload) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
-        type: 'BET',
-        payload: betType
-      }));
+      this.ws.send(JSON.stringify(payload));
     } else {
-      console.warn('[WebSocket] Cannot send bet: WebSocket not ready', { state: this.ws?.readyState });
+      console.warn('[WebSocket] Cannot send message: WebSocket not ready', { state: this.ws?.readyState });
     }
   }
 

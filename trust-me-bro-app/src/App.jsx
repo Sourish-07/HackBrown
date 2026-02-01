@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { GameWebSocket } from './websocket';
-import QRDisplay from './QRDisplay';
 import './App.css';
-// lazy import to avoid earlier bundling issues
-const BiometricsLazy = React.lazy(() => import('./Biometrics'));
+const Biometrics = React.lazy(() => import('./components/Biometrics'));
 
 function App() {
   const [gameState, setGameState] = useState(null);
@@ -12,99 +10,128 @@ function App() {
   const [gameStarted, setGameStarted] = useState(false);
   const [gamePin, setGamePin] = useState('');
   const [displayedGuess, setDisplayedGuess] = useState(null);
-  const [displayedSelection, setDisplayedSelection] = useState(null);
   const [showGuessAnim, setShowGuessAnim] = useState(false);
   const [countdownRemaining, setCountdownRemaining] = useState(null);
+  const [connectionNote, setConnectionNote] = useState('Connecting to backend...');
 
   useEffect(() => {
-    const socket = new GameWebSocket('ws://localhost:3000', (data) => {
+    const socket = new GameWebSocket(null, (data) => {
       console.log('[Main] Received:', data);
       if (data.type === 'INIT') {
         setGameState(data.data);
-        if (data.data.gamePin) setGamePin(data.data.gamePin);
-      } else if (data.type === 'GAME_PIN') {
+        if (data.data?.gamePin) setGamePin(data.data.gamePin);
+        setConnectionNote('Connected');
+        return;
+      }
+      if (data.type === 'GAME_PIN') {
         setGamePin(data.gamePin);
-      } else if (data.type === 'GAME_START') {
-        setGameState(data.data);
-        setGameStarted(true);
-      } else if (data.type === 'PLAYERS_UPDATE') {
-        setGameState(data.data);
-      } else if (data.type === 'WAGER_SET') {
-        // update wager on main; do NOT show declared choice
-        setGameState(prev => ({ ...prev, currentWager: data.data.wager }));
-      } else if (data.type === 'GUESS_MADE') {
-        // Show the guess briefly with animation
-        setDisplayedGuess(data.data.guess);
-        setShowGuessAnim(true);
-        setTimeout(() => setShowGuessAnim(false), 1200);
-      } else if (data.type === 'COUNTDOWN') {
-        setCountdownRemaining(data.data.seconds);
-      } else if (data.type === 'PHASE_UPDATE' || data.type === 'BIOMETRICS_UPDATE') {
-        setGameState(data.data);
-      } else if (data.type === 'RESULT' || data.type === 'RESULT_PHASE') {
-        setBetResult(data.data);
-        setGameState(prev => ({ ...prev, ...data.data }));
-        // clear displayed declared/guess after showing result
-        setTimeout(() => {
-          setDisplayedSelection(null);
-          setDisplayedGuess(null);
-        }, 2000);
-      } else if (data.type === 'NEXT_ROUND') {
+        return;
+      }
+      if (data.type === 'GAME_RESET') {
         setGameState(data.data);
         setBetResult(null);
+        if (data.data?.gamePin) setGamePin(data.data.gamePin);
+        setCountdownRemaining(null);
+        setDisplayedGuess(null);
+        return;
+      }
+      if (data.type === 'GAME_START') {
+        setGameState(data.data);
+        setGameStarted(true);
+        return;
+      }
+      if (data.type === 'PLAYERS_UPDATE' || data.type === 'PHASE_UPDATE' || data.type === 'BIOMETRICS_UPDATE' || data.type === 'NEXT_ROUND') {
+        if (data.data) setGameState(data.data);
+        if (data.type === 'NEXT_ROUND') setBetResult(null);
+        return;
+      }
+      if (data.type === 'WAGER_SET') {
+        setGameState((prev) => ({ ...prev, currentWager: data.data.wager }));
+        return;
+      }
+      if (data.type === 'GUESS_MADE') {
+        setDisplayedGuess(data.data.guess);
+        setShowGuessAnim(true);
+        setTimeout(() => setShowGuessAnim(false), 1500);
+        return;
+      }
+      if (data.type === 'COUNTDOWN') {
+        setCountdownRemaining(data.data.seconds);
+        return;
+      }
+      if (data.type === 'RESULT' || data.type === 'RESULT_PHASE') {
+        setBetResult(data.data);
+        setGameState((prev) => ({ ...prev, ...data.data }));
+        setTimeout(() => setDisplayedGuess(null), 3000);
       }
     });
+
     socket.connect();
     setWs(socket);
-    setTimeout(() => {
-      socket.ws.send(JSON.stringify({
+
+    const registerTimer = setTimeout(() => {
+      socket.sendMessage({
         type: 'REGISTER',
-        clientType: 'main',
-        playerId: null
-      }));
-    }, 500);
+        clientType: 'main'
+      });
+    }, 300);
+
     return () => {
-      if (socket && socket.ws) socket.ws.close();
+      clearTimeout(registerTimer);
+      socket.ws?.close();
     };
   }, []);
+
+  useEffect(() => {
+    const connected = (gameState?.connectedPlayers?.length || 0) >= 2;
+    if (connected && !gameStarted) setGameStarted(true);
+    if (!connected && gameStarted) setGameStarted(false);
+  }, [gameState, gameStarted]);
 
   if (!gameState) {
     return (
       <div className="App connecting">
         <h1>TRUST ME BRO</h1>
-        <p>⏳ Starting up...</p>
+        <p className="blink">{connectionNote}</p>
       </div>
     );
   }
 
-  // Before game starts: show QR codes
   if (!gameStarted) {
     return (
       <div className="App">
         <header>
           <h1>TRUST ME BRO</h1>
-          <p>a lying game</p>
+          <p>Lie detection - high stakes</p>
         </header>
 
         <div className="waiting-split">
-          {/* Left: Risk Score & Status */}
           <div className="waiting-left">
             <div className="risk-panel">
-              <h2>Waiting on Biometrics</h2>
-              <div className="status-icon">⏳</div>
-              <p>Game will start when players join</p>
+              <h2>Biometric Sync</h2>
+              <div className="status-icon pulse">[SYNC]</div>
+              <p>Awaiting player connection</p>
             </div>
           </div>
 
-          {/* Right: Game PIN & Player Status */}
           <div className="waiting-right">
-            <QRDisplay gamePin={gamePin} />
+            <div className="code-big">
+              <h2>GAME CODE</h2>
+              <div className="pin-display">{gamePin || '----'}</div>
+              <p className="pin-note">
+                Tell players to go to:
+                <span className="pin-url">{window.location.origin}/player</span>
+              </p>
+            </div>
+
             <div className="player-status">
-              <h3>Connected Players: {Object.keys(gameState.connectedPlayers || {}).length}/2</h3>
-              {gameState.connectedPlayers?.[1] && <p className="connected">✓ Player 1</p>}
-              {!gameState.connectedPlayers?.[1] && <p className="waiting">⏳ Player 1</p>}
-              {gameState.connectedPlayers?.[2] && <p className="connected">✓ Player 2</p>}
-              {!gameState.connectedPlayers?.[2] && <p className="waiting">⏳ Player 2</p>}
+              <h3>Neural Interfaces</h3>
+              <p className={gameState.connectedPlayers?.[1] ? 'connected' : 'waiting'}>
+                {gameState.connectedPlayers?.[1] ? 'Player 1 synced' : 'Waiting on Player 1'}
+              </p>
+              <p className={gameState.connectedPlayers?.[2] ? 'connected' : 'waiting'}>
+                {gameState.connectedPlayers?.[2] ? 'Player 2 synced' : 'Waiting on Player 2'}
+              </p>
             </div>
           </div>
         </div>
@@ -112,105 +139,94 @@ function App() {
     );
   }
 
-  // Game in progress
   const riskScore = gameState.riskScore || 0;
-  const riskLevel = riskScore >= 75 ? 'HIGH' : riskScore >= 40 ? 'MEDIUM' : 'LOW';
-  const riskColor = riskScore >= 75 ? '#ff4444' : riskScore >= 40 ? '#ffaa00' : '#44aa44';
+  const riskLevel = riskScore >= 75 ? 'CRITICAL' : riskScore >= 40 ? 'ELEVATED' : 'NOMINAL';
+  const riskColor = riskScore >= 75 ? '#ff0044' : riskScore >= 40 ? '#ffaa00' : '#00ff88';
   const metrics = gameState.lastAiData?.metrics || {};
-
   const subjectPlayer = gameState.subjectPlayer || 1;
+  const guesserPlayer = gameState.guesserPlayer || 2;
 
   return (
     <div className="App game-view">
       {countdownRemaining !== null && (
-        <div className="main-countdown">Next round: {countdownRemaining}s</div>
+        <div className="countdown-main pulse-glow">
+          Neural reset in {countdownRemaining}s
+        </div>
       )}
       <header>
         <h1>TRUST ME BRO</h1>
-        <p>a lying game</p>
-        <div className="game-info">
-          Round {gameState.round} | Player {subjectPlayer} Interrogator
-        </div>
+        <p>Round {gameState.round} | Subject: Player {subjectPlayer} | Guesser: Player {guesserPlayer}</p>
       </header>
-
       <div className="game-container">
-        {/* Left: Risk Score & Biometrics */}
         <div className="risk-panel">
-          <div className="risk-score-display" style={{ borderColor: riskColor }}>
-            <h2>Risk Score</h2>
-            <div className="score-number" style={{ color: riskColor }}>
+          <div className="risk-score-display" style={{ borderColor: riskColor, boxShadow: `0 0 30px ${riskColor}40` }}>
+            <h2>RISK LEVEL</h2>
+            <div className="score-number pulse-glow" style={{ color: riskColor }}>
               {riskScore}
             </div>
-            <p className="risk-level" style={{ color: riskColor }}>
-              {riskLevel} RISK
-            </p>
+            <p className="risk-level" style={{ color: riskColor }}>{riskLevel}</p>
           </div>
-
-          {(metrics && Object.keys(metrics).length > 0) && (
-            <div className="metrics">
-              <h3>Live Biometrics</h3>
-              {metrics.gemini && metrics.gemini.reasoning && (
-                <div>
-                  <p><strong>AI Analysis:</strong> {metrics.gemini.reasoning}</p>
-                  {metrics.gemini.tone_summary && (
-                    <p><strong>Tone:</strong> {metrics.gemini.tone_summary}</p>
-                  )}
-                </div>
+          {Object.keys(metrics).length > 0 && (
+            <div className="metrics scan-border">
+              <h3>Sensor Feed</h3>
+              {metrics.presage && (
+                <p>HR: {metrics.presage.heart_rate || '--'} bpm | Stress: {metrics.presage.stress_index?.toFixed(2) || '--'} | Breathing: {metrics.presage.breathing_rate || '--'}</p>
+              )}
+              {metrics.gemini?.reasoning && (
+                <p className="ai-reason">AI: {metrics.gemini.reasoning}</p>
               )}
             </div>
           )}
-          {/* Local biometrics component (camera + mic) */}
-          <div>
-            {/* lazy-load the component to avoid import cycles in some setups */}
-              <React.Suspense fallback={<div style={{padding:8}}>Loading biometrics…</div>}>
-              <BiometricsLazy presage={metrics.presage} />
-            </React.Suspense>
-          </div>
+          <Suspense fallback={<div className="loading">Sensor initializing...</div>}>
+            <Biometrics presage={metrics.presage} />
+          </Suspense>
         </div>
 
-        {/* Right: Game Status & Wager */}
         <div className="financial-panel">
-          <h3>Round {gameState.round}</h3>
-          
-          {/* Player Balances */}
+          <h3>Economy Node</h3>
           <div className="balances">
-            <div className="balance-card player1" style={{ borderColor: '#00ff88' }}>
-              <h4>Player 1</h4>
-              <p className="balance-amount" style={{ color: '#00ff88' }}>${gameState.scores?.player_1_balance || 0}</p>
+            <div className="balance-card player" style={{ borderColor: '#00ff88' }}>
+              <h4>P1</h4>
+              <div className="balance-amount">${gameState.scores?.player_1_balance || 0}</div>
             </div>
-            <div className="balance-card player2" style={{ borderColor: '#ff0044' }}>
-              <h4>Player 2</h4>
-              <p className="balance-amount" style={{ color: '#ff0044' }}>${gameState.scores?.player_2_balance || 0}</p>
+            <div className="balance-card opponent" style={{ borderColor: '#ff0044' }}>
+              <h4>P2</h4>
+              <div className="balance-amount">${gameState.scores?.player_2_balance || 0}</div>
             </div>
           </div>
 
-          {/* Wager Display */}
-            {gameState.currentWager > 0 && (
-              <div className="wager-display">
-                <p>Current Wager: <strong>${gameState.currentWager}</strong></p>
-                {displayedGuess && showGuessAnim && (
-                  <p className="guess-banner">Guess: <strong>{displayedGuess.toUpperCase()}</strong></p>
-                )}
-                {/* Subject selection is not shown; main shows the guess and then the result */}
-                <p className="phase-text">
-                  {gameState.gamePhase === 'wagering' && '⏳ Waiting for wager...'}
-                  {gameState.gamePhase === 'statement' && '🎤 Subject making statement...'}
-                  {gameState.gamePhase === 'guessing' && '🤔 Interrogator deciding...'}
-                  {gameState.gamePhase === 'results' && '📊 Results...'}
-                </p>
-              </div>
-            )}
+          {gameState.currentWager > 0 && (
+            <div className="wager-display scan-border">
+              <p>Wager Active: <strong>${gameState.currentWager}</strong></p>
+              {displayedGuess && showGuessAnim && (
+                <p className="guess-banner fade-pop">Declared: <strong>{displayedGuess.toUpperCase()}</strong></p>
+              )}
+              <p className="phase-text glow">
+                {gameState.gamePhase === 'wagering' && 'Awaiting wager...'}
+                {gameState.gamePhase === 'statement' && 'Statement phase active'}
+                {gameState.gamePhase === 'guessing' && 'Guesser analyzing...'}
+                {gameState.gamePhase === 'results' && 'Result processing...'}
+              </p>
+            </div>
+          )}
 
-          {/* Result Display */}
+          <div className="decision-buttons processing">
+            <button className="btn approve" disabled>
+              Controls on phones
+            </button>
+            <button className="btn deny" disabled>
+              Waiting for players
+            </button>
+          </div>
+
           {betResult && (
-            <div className="bet-result" style={{
-              borderColor: betResult.winner?.includes('player_1') ? '#00ff88' : '#ff0044'
+            <div className="bet-result fade-in" style={{
+              borderColor: betResult.winner?.includes('player_1') ? '#00ff88' : '#ff0044',
+              boxShadow: `0 0 25px ${betResult.winner?.includes('player_1') ? '#00ff8840' : '#ff004440'}`
             }}>
               <h3>{betResult.message}</h3>
-              {betResult.actual_outcome && (
-                <p>Actual: <strong>{betResult.actual_outcome.toUpperCase()}</strong></p>
-              )}
-              <p className="wager-result">Wager: ${betResult.wager}</p>
+              {betResult.actual_outcome && <p>Truth: <strong>{betResult.actual_outcome.toUpperCase()}</strong></p>}
+              <p>Wager Outcome: ${betResult.wager || 0}</p>
             </div>
           )}
         </div>
